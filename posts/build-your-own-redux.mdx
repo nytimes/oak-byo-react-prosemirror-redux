@@ -1,1 +1,412 @@
 # Build your own Redux
+
+We're going to rewrite Redux from scratch. Our final result won't have perfect
+feature parity with the actual Redux library, but it will serve as a substitute
+for simple projects!
+
+## Introduction
+
+Throughout this tutorial, we'll make use of this simple redux application from
+the Redux documentation.
+
+This application is very straightforward. It renders a single number and two
+buttons. One button increments the number by one, and the other decrements it by
+one.
+
+<CH.Code>
+
+```javascript index.js
+const initialState = {
+  value: 0,
+};
+
+function counterReducer(state = initialState, action) {
+  switch (action.type) {
+    case "counter/incremented":
+      return { ...state, value: state.value + 1 };
+    case "counter/decremented":
+      return { ...state, value: state.value - 1 };
+    default:
+      return state;
+  }
+}
+
+const store = Redux.createStore(counterReducer);
+
+const valueEl = document.getElementById("value");
+
+function render() {
+  const state = store.getState();
+  valueEl.innerHTML = state.value.toString();
+}
+
+render();
+store.subscribe(render);
+
+document.getElementById("increment").addEventListener("click", function () {
+  store.dispatch({ type: "counter/incremented" });
+});
+
+document.getElementById("decrement").addEventListener("click", function () {
+  store.dispatch({ type: "counter/decremented" });
+});
+```
+
+```html index.html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Redux basic example</title>
+    <script src="https://unpkg.com/redux@latest/dist/redux.min.js"></script>
+  </head>
+  <body>
+    <div>
+      <p>
+        Clicked: <span id="value">0</span> times
+        <button type="button" id="increment">+</button>
+        <button type="button" id="decrement">-</button>
+      </p>
+    </div>
+    <script src="/index.js"></script>
+  </body>
+</html>
+```
+
+</CH.Code>
+
+The only way to update the state of a Redux application is with a _reducer_.
+Reducers are pure functions that take the current state and an action and
+produce the next state value. Our reducer considers two different action types,
+`"counter/incremented"` and `"counter/decremented"`.
+
+```javascript focus=1:13
+const initialState = {
+  value: 0,
+};
+
+function counterReducer(state = initialState, action) {
+  switch (action.type) {
+    case "counter/incremented":
+      return { ...state, value: state.value + 1 };
+    case "counter/decremented":
+      return { ...state, value: state.value - 1 };
+    default:
+      return state;
+  }
+}
+
+const store = Redux.createStore(counterReducer);
+
+const valueEl = document.getElementById("value");
+
+function render() {
+  const state = store.getState();
+  valueEl.innerHTML = state.value.toString();
+}
+```
+
+In the Redux model, there is only one store. The store is a singleton, and it is
+responsible for keeping track of the current state, updating it with the reducer
+in response to action dispatches, and notifying subscribers.
+
+```javascript focus=12
+function counterReducer(state = initialState, action) {
+  switch (action.type) {
+    case "counter/incremented":
+      return { ...state, value: state.value + 1 };
+    case "counter/decremented":
+      return { ...state, value: state.value - 1 };
+    default:
+      return state;
+  }
+}
+
+const store = Redux.createStore(counterReducer);
+
+const valueEl = document.getElementById("value");
+
+function render() {
+  const state = store.getState();
+  valueEl.innerHTML = state.value.toString();
+}
+```
+
+Next, we define a render function. This function takes our new state and updates
+the DOM to match it. We use `store.subscribe()` to register the render function
+to be called every time the store is updated.
+
+```javascript focus=3:11
+const store = Redux.createStore(counterReducer);
+
+const valueEl = document.getElementById("value");
+
+function render() {
+  const state = store.getState();
+  valueEl.innerHTML = state.value.toString();
+}
+
+render();
+store.subscribe(render);
+
+document.getElementById("increment").addEventListener("click", function () {
+  store.dispatch({ type: "counter/incremented" });
+});
+```
+
+Finally, we attach some event listeners to our buttons. When each button is
+clicked, we dispatch the appropriate action to the Redux store, which triggers
+the next state reduction and a subsequent call to the render function, updating
+our view.
+
+```javascript focus=4:10
+render();
+store.subscribe(render);
+
+document.getElementById("increment").addEventListener("click", function () {
+  store.dispatch({ type: "counter/incremented" });
+});
+
+document.getElementById("decrement").addEventListener("click", function () {
+  store.dispatch({ type: "counter/decremented" });
+});
+```
+
+## Getting started
+
+Let's identify the API that we need to support in our new Redux implementation,
+Reflux.
+
+To start, we'll need to at least support `createStore`, `subscribe`, and
+`dispatch`.
+
+<CH.Code>
+
+```javascript reflux.js
+function createStore() {
+  return {
+    dispatch: () => {
+      // TODO: implement this!
+    },
+    subscribe: () => {
+      // TODO: implement this!
+    },
+  };
+}
+
+const Reflux = {
+  createStore,
+};
+```
+
+```html index.html focus=15
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Redux basic example</title>
+    <script src="https://unpkg.com/redux@latest/dist/redux.min.js"></script>
+  </head>
+  <body>
+    <div>
+      <p>
+        Clicked: <span id="value">0</span> times
+        <button type="button" id="increment">+</button>
+        <button type="button" id="decrement">-</button>
+      </p>
+    </div>
+    <script src="/reflux.js"></script>
+    <script src="/index.js"></script>
+  </body>
+</html>
+```
+
+</CH.Code>
+
+The bulk of the work that `createStore` does actually lives in the
+implementation of `dispatch` and `subscribe`. We'll start by implementing
+`dispatch`. To do so, we'll need to take a look at the first argument that
+`createStore` takes, a `reducer` function. We'll use our `reducer` to compute
+our state, and then to update it each time `dispatch` is called with an action.
+
+Notice that we dispatch our own action, `@@INIT`, when `createStore` is called.
+We don't expect any user-provided reducers to respond to this action; instead,
+we use it to get the initial state from our reducer.
+
+```javascript focus=2,4:6
+function createStore(reducer) {
+  let state = reducer(undefined, { type: "@@INIT" });
+  return {
+    dispatch: (action) => {
+      state = reducer(state, action);
+    },
+    subscribe: () => {
+      // TODO: implement this!
+    },
+  };
+}
+
+const Reflux = {
+  createStore,
+};
+```
+
+Now let's implement `subscribe`. As we said before, `subscribe` takes a function
+(called a `listener`) as an argument, and that function should be called each
+time the state is updated.
+
+```javascript focus=3,7:10
+function createStore(reducer) {
+  let state = reducer(undefined, { type: "@@INIT" });
+  const listeners = [];
+  return {
+    dispatch: (action) => {
+      state = reducer(state, action);
+    },
+    subscribe: (listener) => {
+      listeners.push(listener);
+    },
+  };
+}
+
+const Reflux = {
+  createStore,
+};
+```
+
+Now we need to ensure that our listeners are actually called after the state is
+updated.
+
+```javascript focus=7:9
+function createStore(reducer) {
+  let state = reducer(undefined, { type: "@@INIT" });
+  const listeners = [];
+  return {
+    dispatch: (action) => {
+      state = reducer(state, action);
+      listeners.forEach((listener) => {
+        listener();
+      });
+    },
+    subscribe: (listener) => {
+      listeners.push(listener);
+    },
+  };
+}
+
+const Reflux = {
+  createStore,
+};
+```
+
+Finally, you might have noticed that our listener isn't passed any arguments.
+Instead, listeners are expected to call `store.getState()` to obtain the new
+state. Let's implement this last method.
+
+```javascript focus=11
+function createStore(reducer) {
+  let state = reducer(undefined, { type: "@@INIT" });
+  const listeners = [];
+  return {
+    dispatch: (action) => {
+      state = reducer(state, action);
+      listeners.forEach((listener) => {
+        listener();
+      });
+    },
+    getState: () => state,
+    subscribe: (listener) => {
+      listeners.push(listener);
+    },
+  };
+}
+
+const Reflux = {
+  createStore,
+};
+```
+
+That's it! Now lets go back to our application, and replace our call to
+`Redux.createStore()` with a call to `Reflux.createStore()`.
+
+<CH.Code>
+
+```javascript index.js focus=16
+const initialState = {
+  value: 0,
+};
+
+function counterReducer(state = initialState, action) {
+  switch (action.type) {
+    case "counter/incremented":
+      return { ...state, value: state.value + 1 };
+    case "counter/decremented":
+      return { ...state, value: state.value - 1 };
+    default:
+      return state;
+  }
+}
+
+const store = Reflux.createStore(counterReducer);
+
+const valueEl = document.getElementById("value");
+
+function render() {
+  const state = store.getState();
+  valueEl.innerHTML = state.value.toString();
+}
+
+render();
+store.subscribe(render);
+
+document.getElementById("increment").addEventListener("click", function () {
+  store.dispatch({ type: "counter/incremented" });
+});
+
+document.getElementById("decrement").addEventListener("click", function () {
+  store.dispatch({ type: "counter/decremented" });
+});
+```
+
+```javascript reflux.js
+function createStore(reducer) {
+  let state = reducer(undefined, { type: "@@INIT" });
+  const listeners = [];
+  return {
+    dispatch: (action) => {
+      state = reducer(state, action);
+      listeners.forEach((listener) => {
+        listener();
+      });
+    },
+    getState: () => state,
+    subscribe: (listener) => {
+      listeners.push(listener);
+    },
+  };
+}
+
+const Reflux = {
+  createStore,
+};
+```
+
+```html index.html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Redux basic example</title>
+  </head>
+  <body>
+    <div>
+      <p>
+        Clicked: <span id="value">0</span> times
+        <button type="button" id="increment">+</button>
+        <button type="button" id="decrement">-</button>
+      </p>
+    </div>
+    <script src="/reflux.js"></script>
+    <script src="/index.js"></script>
+  </body>
+</html>
+```
+
+</CH.Code>

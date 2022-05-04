@@ -3,9 +3,9 @@ import path from "path";
 import { serialize } from "next-mdx-remote/serialize";
 import { MDXRemote } from "next-mdx-remote";
 import { remarkCodeHike } from "@code-hike/mdx";
-import { CH } from "@code-hike/mdx";
-// import theme from "shiki/themes/solarized-dark.json";
-import styles from "../styles/Home.module.css";
+import { CH } from "@code-hike/mdx/components";
+import theme from "shiki/themes/dracula-soft.json";
+import styles from "../styles/Post.module.css";
 
 export default function Post({ source }) {
   return (
@@ -22,7 +22,7 @@ export async function getStaticProps({ params }) {
   );
   const mdxSource = await serialize(source, {
     mdxOptions: {
-      remarkPlugins: [[remarkCodeHike, { autoImport: false }]],
+      remarkPlugins: [[remarkCodeHike, { autoImport: false, theme }]],
       useDynamicImport: true,
     },
   });
