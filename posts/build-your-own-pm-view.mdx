@@ -1,0 +1,916 @@
+# Buld Your Own: ProseMirror View
+
+Let's build a view layer for ProseMirror from scratch! We won't build support
+for everything that ProseMirror provides with its official view library, but it
+will provide a taste of what is involved.
+
+## Introduction
+
+We'll start with a simple ProseMirror sample that uses the standard schema. Our
+implementation won't support marks or decorations, and it won't support custom
+views, but it will demonstrate how to build the core components of a ProseMirror
+view library. Our implementation will also be made simple by not supporting all
+of the browsers that ProseMirror supports.
+
+Open up the [glitch] for this tutorial and click Remix in the top right corner
+to get started and follow along.
+
+[glitch]: https://glitch.com/edit/#!/oak-pm-react-week-build-your-own-pm-view
+
+<CH.Code>
+
+```javascript index.js
+const { EditorState } = require("prosemirror-state");
+const { EditorView } = require("prosemirror-view");
+const { schema } = require("prosemirror-schema-basic");
+
+const doc = schema.node("doc", null, [
+  schema.node("paragraph", null, [schema.text("Hello, ProseMirror!")]),
+  schema.node("paragraph", null, [schema.text("Time to edit!")]),
+]);
+
+window.view = new EditorView(document.querySelector("#editor"), {
+  state: EditorState.create({ doc }),
+});
+```
+
+```html index.html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>ProseMirror basic example</title>
+    <meta charset="utf8" />
+    <link rel="stylesheet" href="https://prosemirror.net/css/editor.css" />
+    <script src="https://prosemirror.net/examples/prosemirror.js"></script>
+    <script src="/require-pm.js"></script>
+    <style>
+      #editor {
+        white-space: break-spaces;
+      }
+
+      p {
+        line-height: 1.2rem;
+        min-height: 1.2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="editor" style="margin-bottom: 23px"></div>
+    <script src="/index.js"></script>
+  </body>
+</html>
+```
+
+</CH.Code>
+
+## Getting started
+
+This editor is really basic. It doesn't include ProseMirror's `keymap` plugin,
+so it's not even possible to add new paragraphs. That's okay. We're going to
+build our own `EditorView`. It won't support ProseMirror view plugins, but we'll
+use modern browser input events and implement sensible defaults.
+
+Comment out the line to require `EditorView`, create the file `editor-view.js`
+and add it to the `index.html` file. We'll build out this `EditorView` step by
+step until it works!
+
+<CH.Code>
+
+```javascript editor-view.js
+class EditorView {
+  constructor(dom, { state }) {
+    this.dom = dom;
+    this.state = state;
+
+    this.dom.contentEditable = true;
+  }
+}
+```
+
+```html index.html focus=22
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>ProseMirror basic example</title>
+    <meta charset="utf8" />
+    <link rel="stylesheet" href="https://prosemirror.net/css/editor.css" />
+    <script src="https://prosemirror.net/examples/prosemirror.js"></script>
+    <script src="/require-pm.js"></script>
+    <style>
+      #editor {
+        white-space: break-spaces;
+      }
+
+      p {
+        line-height: 1.2rem;
+        min-height: 1.2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="editor" style="margin-bottom: 23px"></div>
+    <script src="/editor-view.js"></script>
+    <script src="/index.js"></script>
+  </body>
+</html>
+```
+
+```javascript index.js focus=1,3
+/* global EditorView */
+const { EditorState } = require("prosemirror-state");
+// const { EditorView } = require("prosemirror-view");
+const { schema } = require("prosemirror-schema-basic");
+
+const doc = schema.node("doc", null, [
+  schema.node("paragraph", null, [schema.text("Hello, ProseMirror!")]),
+  schema.node("paragraph", null, [schema.text("Time to edit!")]),
+]);
+
+window.view = new EditorView(document.querySelector("#editor"), {
+  state: EditorState.create({ doc }),
+});
+```
+
+</CH.Code>
+
+Our `EditorView` just stores the state and sets the `contentEditable` attribute
+of the provided DOM element. Notice how this is enough for the browser to make
+the content editable. The browser even lets us add paragraph breaks! But at the
+moment, there is no relationship between the state and the DOM. Changes to one
+won't affect the other. We'll build out this relationship one direction at a
+time, starting with updating the DOM to match the state, and then eventually
+updating the state in response to user interactions.
+
+## Rendering
+
+To start, let's make a function to render one of the basic units of ProseMirror
+state: a ProseMirror node. Our function is going to return a DOM node
+representation of our ProseMirror node. For simplicity, we'll start with text
+nodes.
+
+<CH.Code>
+
+```javascript editor-view.js focus=1:6
+function renderNode(node) {
+  if (node.isText) {
+    return document.createTextNode(node.text);
+  }
+}
+
+class EditorView {
+  constructor(dom, { state }) {
+    this.dom = dom;
+    this.state = state;
+
+    this.dom.contentEditable = true;
+  }
+}
+```
+
+</CH.Code>
+
+To add support for other kinds of nodes, we need to use the `NodeSpec` for the
+node to generate what ProseMirror calls a `DOMOutputSpec`. In real schemas, the
+`DOMOutputSpec` can be quite complicated. The DOM representation can be made up
+of a number of HTML elements, but we're going to keep things simple. For now,
+let's assume every `NodeSpec` returns a very simple structure from its `toDOM`
+function.
+
+We're not trying to practice recursion here, so we'll assume that the "hole",
+where ProseMirror renders the children of the node, is the content of the one
+and only DOM node. With this simplifying assumption, all we need to do is look
+at the first item of the array returned by `toDOM` to get the tag name.
+
+<CH.Code>
+
+```javascript editor-view.js focus=6:7
+function renderNode(node) {
+  if (node.isText) {
+    return document.createTextNode(node.text);
+  }
+
+  const [tagName] = node.type.spec.toDOM(node);
+  return document.createElement(tagName);
+}
+```
+
+</CH.Code>
+
+The `EditorView` is the view for the document, but we are going to need views
+for all of the nodes of the model now that we can render them. Let's get that
+structure in place.
+
+<CH.Code>
+
+```javascript editor-view.js focus=10:37,39[18:34],41,47:49
+function renderNode(node) {
+  if (node.isText) {
+    return document.createTextNode(node.text);
+  }
+
+  const [tagName] = node.type.spec.toDOM(node);
+  return document.createElement(tagName);
+}
+
+class View {
+  constructor(node, dom, parent) {
+    this.node = node;
+    this.dom = dom;
+    this.parent = parent;
+  }
+
+  destroy() {
+    this.parent = null;
+  }
+}
+
+class TextView extends View {}
+
+class NodeView extends View {
+  constructor(node, dom, parent) {
+    super(node, dom, parent);
+    this.children = [];
+  }
+
+  destroy() {
+    super.destroy();
+
+    for (const child of children) {
+      child.destroy();
+    }
+  }
+}
+
+class EditorView extends NodeView {
+  constructor(dom, { state }) {
+    super(state.doc, dom, null);
+    this.state = state;
+
+    this.dom.contentEditable = true;
+  }
+
+  destroy() {
+    super.destroy();
+  }
+}
+```
+
+</CH.Code>
+
+Note that the `EditorView` is just a special case of `NodeView`, where the node
+is the document node.
+
+<details>
+
+<summary>Feel familiar?</summary>
+
+We're building something not unlike React's fiber tree. We've got a tree that's
+linked downwards and upwards, with each view having references to its parent and
+its children.
+
+</details>
+
+<details>
+
+<summary>Taking out the trash</summary>
+
+When we destroy the editor view, we have to remove the DOM event listener. Why
+why do we set `parent` to `null` in the base class when we destroy a view? The
+JavaScript engine automatically deletes unused objects in a process known as
+garbage collection. We can help ensure that it deletes our views by removing
+references to them. As long as we break the `parent` reference, we've removed
+one side of the reference cycle between a parent and a child, which makes it
+easier for garbage collection to reason about whether the object is still in
+use. Consult the Wikipedia entry for [garbage collection] for more details.
+
+[garbage collection]:
+  https://en.wikipedia.org/wiki/Garbage_collection_(computer_science)
+
+</details>
+
+These views receive their initial DOM representation as an argument to their
+constructor, but they don't initially have any children. These views need to
+render their children. The editor, which starts out empty, will render its
+children, and they will return their children, and so on until we render the
+whole document!
+
+<CH.Code>
+
+```javascript editor-view.js focus=5,8:24
+class NodeView extends View {
+  constructor(node, dom, parent) {
+    super(node, dom, parent);
+    this.children = [];
+    this.updateChildren();
+  }
+
+  updateChildren() {
+    this.node.forEach((child, offset, index) => {
+      const childView = this.children[index];
+      if (childView) {
+        return;
+      }
+
+      const childDOM = renderNode(child);
+      this.dom.appendChild(childDOM);
+
+      if (child.isText) {
+        this.children[index] = new TextView(child, childDOM, this);
+      } else {
+        this.children[index] = new NodeView(child, childDOM, this);
+      }
+    });
+  }
+}
+```
+
+</CH.Code>
+
+If everything is working correctly, we should now see our paragraphs and our
+text in the document!
+
+## Updating the view
+
+Now that we can construct an initial empty view and render all the children, we
+need a way to update it when it changes. We'll leave this unimplemented in the
+base class, but implement it for `TextView` and `NodeView`. The method will take
+a new node, update the DOM to match, and return `true` if it is possible to do
+so. If it's not possible to update the view, the method will return `false`.
+
+We'll also need to make sure that we account for updating in `updateChildren`.
+When its possible to update a child, we'll do so. Otherwise, we'll destroy it
+and recreate it. We'll also need to remove any extra children.
+
+<details>
+
+<summary>Optimization possibilities</summary>
+
+It may not be efficient to destroy and recreate children all the time when some
+updates might be possible to perform in place. It's not possible to update the
+text nodes, but if we implemented node attributes we could set the attributes of
+the existing DOM node to match our new ProseMirror node. You may also note that
+adding a child anywhere but at the end of a node will destroy and recreate all
+the children after it. The real implementation tries to keep any children that
+did not change, even when adding and removing children. We're not going to try
+to handle that here, but note that this is not dissimilar from what React needs
+to do and how you can use keys to tell React about the identities of individual
+children.
+
+</details>
+
+<CH.Code>
+
+```javascript editor-view.js focus=2:4,14:22,28:33,37:41,50:53
+class TextView extends View {
+  update() {
+    return false;
+  }
+}
+
+class NodeView extends View {
+  constructor(node, dom, parent) {
+    super(node, dom, parent);
+    this.children = [];
+    this.updateChildren();
+  }
+
+  update(node) {
+    if (!this.node.sameMarkup(node)) {
+      return false;
+    }
+
+    this.node = node;
+    this.updateChildren();
+    return true;
+  }
+
+  updateChildren() {
+    this.node.forEach((child, offset, index) => {
+      const childView = this.children[index];
+      if (childView) {
+        const updated = childView.update(child);
+        if (updated) {
+          return;
+        }
+
+        childView.destroy();
+      }
+
+      const childDOM = renderNode(child);
+      if (childView) {
+        this.dom.replaceChild(childDOM, childView.dom);
+      } else {
+        this.dom.appendChild(childDOM);
+      }
+
+      if (child.isText) {
+        this.children[index] = new TextView(child, childDOM, this);
+      } else {
+        this.children[index] = new NodeView(child, childDOM, this);
+      }
+    });
+
+    while (this.children.length > this.node.childCount) {
+      this.children.pop().destroy();
+      this.dom.removeChild(this.dom.lastChild);
+    }
+  }
+}
+```
+
+</CH.Code>
+
+## Editing
+
+Wow! That was a lot, but we're here. We can construct an editor view and it can
+render an editor state.
+
+Now we can start working in the opposite direction: updating our state in
+response to user input. Right now, our content is editable; the browser does
+that for us, with the `contenteditable` attribute. There is no standardized
+behavior for editable content, though. Where one browser might add a new
+paragraph tag in response to a user pressing enter, another might add a hard
+break. That's why ProseMirror will prevent you from adding a new paragraph by
+default! You have to add a `keymap` plugin that says _exactly_ what transactions
+should run when you press the "return" key.
+
+To implement our more fine-grained control over our content, we'll rely on the
+[Input Events] standard, which modern browsers implement. It defines a
+`beforeinput` event and a set of input types that express common editing
+activities. And the best part for us is that all of these events are cancelable.
+That means we can start from a blank slate, and then start to build out the
+interactions we want.
+
+[input events]: https://w3c.github.io/input-events/
+
+<CH.Code>
+
+```javascript editor-view.js focus=6:7,14,17:19
+class EditorView extends NodeView {
+  constructor(dom, { state }) {
+    super(state.doc, dom, null);
+    this.state = state;
+
+    this.onBeforeInput = this.onBeforeInput.bind(this);
+    this.dom.addEventListener("beforeinput", this.onBeforeInput);
+
+    this.dom.contentEditable = true;
+  }
+
+  destroy() {
+    super.destroy();
+    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
+  }
+
+  onBeforeInput(event) {
+    event.preventDefault();
+  }
+}
+```
+
+</CH.Code>
+
+We've taken a really important step! By preventing the default actions of the
+browser, we'll make that the _EditorState_ the source of truth for what should
+be in the DOM. The browser is no longer in control. We are!
+
+<details>
+
+<summary>Remind you of something?</summary>
+
+React components create a virtual DOM, a description of what the DOM _should_
+contain. React reconciles any of the differences between successive renders by
+updating the real DOM to match. Your application state is the source of truth,
+not the DOM. In a similar same way, `EditorState` is a description of what the
+editor _should_ contain. The `EditorView` is responsible for updating the DOM.
+
+</details>
+
+Now we can begin handling events, and making those events update our state!
+
+Let's add methods to our `EditorView` to dispatch a transaction and set state.
+We can also handle our first input event to insert text.
+
+<CH.Code>
+
+```javascript editor-view.js focus=17:25,30:36
+class EditorView extends NodeView {
+  constructor(dom, { state }) {
+    super(state.doc, dom, null);
+    this.state = state;
+
+    this.onBeforeInput = this.onBeforeInput.bind(this);
+    this.dom.addEventListener("beforeinput", this.onBeforeInput);
+
+    this.dom.contentEditable = true;
+  }
+
+  destroy() {
+    super.destroy();
+    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
+  }
+
+  dispatch(tr) {
+    const newState = this.state.apply(tr);
+    this.setState(newState);
+  }
+
+  setState(newState) {
+    this.state = newState;
+    this.update(this.state.doc);
+  }
+
+  onBeforeInput(event) {
+    event.preventDefault();
+
+    switch (event.inputType) {
+      case "insertText": {
+        const { tr } = this.state;
+        tr.insertText(event.data);
+        this.dispatch(tr);
+      }
+    }
+  }
+}
+```
+
+</CH.Code>
+
+What's going on!? If you've gotten this far, you should be able to type in the
+editor again. But no matter where you click and type, the letters appear at the
+top of the editor. We're not handling selection changes! ProseMirror thinks the
+selection begins at the start of the document, and moves it forward each time we
+insert text, but we're not telling it when the user sets a new selection. We'll
+have to tackle that next.
+
+## Selection
+
+ProseMirror has a notion of a "position" within a document. Every editor state
+has a selection that spans a range of positions. Similarly, the HTML document
+has a selection that spans a range of boundary points within the document, where
+a boundary point is a point between two DOM nodes or between the characters of a
+DOM text node. We'll need to be able to change a ProseMirror selection into a
+DOM selection _and vice versa_.
+
+The DOM denotes a boundary point using a reference node and an numberic offset
+into the children of the node. In other words, boundary points are locations
+within a tree. ProseMirror uses a linear reference system. Positions are single
+numbers, with no reference to a node. Therefore, ProseMirror incorporates nodes
+into its positions by considering certain node boundary to have a size. If the
+position before a paragraph is `n`, then the position just inside it is `n+1`.
+
+Let's begin by giving every view three getters, `border`, `pos` and `size`. The
+first of these will say how many positions we cross as we move across an edge of
+the node. It will convey the difference between the position just before a node
+and the position immediately before its content or, equivalently, the difference
+between the position immediately after the content of a node and the position
+just after the node itself. The second of these will give the position of the
+node and the last of these will give the size of the node, including its content
+and its border.
+
+<CH.Code>
+
+```javascript editor-view.js focus=12:34
+class View {
+  constructor(node, dom, parent) {
+    this.node = node;
+    this.dom = dom;
+    this.parent = parent;
+  }
+
+  destroy() {
+    this.parent = null;
+  }
+
+  get border() {
+    return 0;
+  }
+
+  get pos() {
+    const { parent } = this;
+
+    if (!parent) {
+      return -1;
+    }
+
+    const siblings = parent.children;
+    const index = siblings.indexOf(this);
+    const precedingSiblings = siblings.slice(0, index);
+    return precedingSiblings.reduce(
+      (pos, sibling) => pos + sibling.size,
+      parent.pos + parent.border
+    );
+  }
+
+  get size() {
+    return this.node.nodeSize;
+  }
+}
+```
+
+</CH.Code>
+
+For non-leaf nodes, the border will be 1, indicating that we must increment the
+position by 1 when entering or leaving one of these nodes.
+
+<CH.Code>
+
+```javascript editor-view.js focus=8:10
+class NodeView extends View {
+  constructor(node, dom, parent) {
+    super(dom, parent, []);
+    this.node = node;
+    this.updateChildren();
+  }
+
+  get border() {
+    return this.node.isLeaf ? 0 : 1;
+  }
+
+  update(node) {
+    if (!this.node.sameMarkup(node)) {
+      return false;
+    }
+}
+```
+
+</CH.Code>
+
+We'll also need a way to get a ProseMirror view for a given DOM node. We can do
+that by stashing references to the ProseMirror views _on the nodes themselves_.
+
+<CH.Code>
+
+```javascript editor-view.js focus=6,12
+class View {
+  constructor(node, dom, parent) {
+    this.node = node;
+    this.dom = dom;
+    this.parent = parent;
+    this.dom.__view = this;
+  }
+
+  destroy() {
+    this.parent = null;
+
+    this.dom.__view = null;
+  }
+
+  get border() {
+    return 0;
+  }
+
+  get pos() {
+    const { parent } = this;
+
+    if (!parent) {
+      return -1;
+    }
+
+    const siblings = parent.children;
+    const index = siblings.indexOf(this);
+    const precedingSiblings = siblings.slice(0, index);
+    return precedingSiblings.reduce(
+      (pos, sibling) => pos + sibling.size,
+      parent.pos + parent.border
+    );
+  }
+
+  get size() {
+    return this.node.nodeSize;
+  }
+}
+```
+
+</CH.Code>
+
+Now we're ready to add a method to convert a DOM selection to a ProseMirror
+selection.
+
+<CH.Code>
+
+```javascript editor-view.js focus=1,13:14,22,47:67
+const { TextSelection } = require("prosemirror-state");
+
+// ... as before ...
+
+class EditorView extends NodeView {
+  constructor(dom, { state }) {
+    super(state.doc, dom, null);
+    this.state = state;
+
+    this.onBeforeInput = this.onBeforeInput.bind(this);
+    this.dom.addEventListener("beforeinput", this.onBeforeInput);
+
+    this.onSelectionChange = this.onSelectionChange.bind(this);
+    document.addEventListener("selectionchange", this.onSelectionChange);
+
+    this.dom.contentEditable = true;
+  }
+
+  destroy() {
+    super.destroy();
+    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
+    document.removeEventListener("selectionchange", this.onSelectionChange);
+  }
+
+  dispatch(tr) {
+    const newState = this.state.apply(tr);
+    this.setState(newState);
+  }
+
+  setState(newState) {
+    this.state = newState;
+    this.update(this.state.doc);
+  }
+
+  onBeforeInput(event) {
+    event.preventDefault();
+
+    switch (event.inputType) {
+      case "insertText": {
+        const { tr } = this.state;
+        tr.insertText(event.data);
+        this.dispatch(tr);
+      }
+    }
+  }
+
+  onSelectionChange(event) {
+    const { doc, tr } = this.state;
+
+    const domSelection = document.getSelection();
+
+    const { anchorNode, anchorOffset } = domSelection;
+    const anchorView = anchorNode.__view;
+    const anchor = anchorView.pos + anchorView.border + anchorOffset;
+    const $anchor = doc.resolve(anchor);
+
+    const { focusNode, focusOffset } = domSelection;
+    const headView = focusNode.__view;
+    const head = headView.pos + headView.border + focusOffset;
+    const $head = doc.resolve(head);
+
+    const selection = TextSelection.between($anchor, $head);
+    if (!this.state.selection.eq(selection)) {
+      tr.setSelection(selection);
+      this.dispatch(tr);
+    }
+  }
+}
+```
+
+</CH.Code>
+
+At this point, you should be able to click inside the editor and add text
+wherever you like. Things still aren't perfect, though. The cursor that the
+browser displays is not always where it should be. Inserting text may not always
+happen where we expect it to. We can tell ProseMirror where the selection should
+be, but when we render the editor it changes the DOM and that can cause the DOM
+selection to change. We'll need a way to transform a ProseMirror selection into
+a DOM selection and make sure to do that after we update the editor view.
+
+This code will have one interesting subtlety. When we refer to a text position
+there are sometimes two equivalent DOM boundary points for the same ProseMirror
+position because text nodes have no border. When there are two adjacent text
+nodes, the boundary point after the last character of the first node and before
+the first character of the second node are the same ProseMirror position. We'll
+prefer not to make selections that include zero-length slices of text nodes, so
+we'll make sure that we only choose a boundary point at the very start or very
+end of a text node when it provides a good result. For example, we must use the
+very start or very end of a text node when that node is the very first or very
+last child, respectively. Otherwise, we'll prefer that selections start on the
+trailing edge of such a boundary and end on the leading edge.
+
+<CH.Code>
+
+```javascript editor-view.js focus=15:37
+class View {
+  constructor(node, dom, parent) {
+    this.node = node;
+    this.dom = dom;
+    this.parent = parent;
+    this.dom.__view = this;
+  }
+
+  destroy() {
+    this.parent = null;
+
+    this.dom.__view = null;
+  }
+
+  pointFromPos(pos, preferBefore) {
+    let index = 0;
+    let offset = 0;
+
+    while (index < this.children.length) {
+      const child = this.children[index];
+      const isLastChild = index === this.children.length - 1;
+
+      const { border, size } = child;
+      const start = offset + border;
+      const end = offset + size - border;
+      const after = end + border;
+
+      if (pos < after || (pos === after && preferBefore) || isLastChild) {
+        return child.pointFromPos(pos - start, preferBefore);
+      }
+
+      index = index + 1;
+      offset = offset + size;
+    }
+
+    return { node: this.dom, offset: pos };
+  }
+
+  get border() {
+    return 0;
+  }
+```
+
+</CH.Code>
+
+TextViews are much simpler, because they don't have any children.
+
+<CH.Code>
+
+```javascript editor-view.js focus=6:8
+class TextView extends View {
+  update(node) {
+    return false;
+  }
+
+  pointFromPos(pos, preferBefore) {
+    return { node: this.dom, offset: pos };
+  }
+}
+```
+
+</CH.Code>
+
+And now we can update our EditorView's `update` method to keep the DOM selection
+in sync with the state.
+
+<CH.Code>
+
+```javascript editor-view.js focus=31:47
+class EditorView extends NodeView {
+  constructor(dom, { state }) {
+    super(state.doc, dom, null);
+    this.state = state;
+
+    this.onBeforeInput = this.onBeforeInput.bind(this);
+    this.dom.addEventListener("beforeinput", this.onBeforeInput);
+
+    this.onSelectionChange = this.onSelectionChange.bind(this);
+    document.addEventListener("selectionchange", this.onSelectionChange);
+
+    this.dom.contentEditable = true;
+  }
+
+  destroy() {
+    super.destroy();
+    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
+    document.removeEventListener("selectionchange", this.onSelectionChange);
+  }
+
+  dispatch(tr) {
+    const newState = this.state.apply(tr);
+    this.setState(newState);
+  }
+
+  setState(newState) {
+    this.state = newState;
+    this.update(this.state.doc);
+  }
+
+  update(node) {
+    super.update(node);
+
+    const { anchor, head } = this.state.selection;
+    const backward = head > anchor;
+
+    const anchorPoint = this.pointFromPos(anchor, backward);
+    const focusPoint = this.pointFromPos(head, !backward);
+
+    const domSelection = document.getSelection();
+    domSelection.setBaseAndExtent(
+      anchorPoint.node,
+      anchorPoint.offset,
+      focusPoint.node,
+      focusPoint.offset
+    );
+  }
+
+  onBeforeInput(event) {
+    event.preventDefault();
+}
+```
+
+</CH.Code>
+
+Now the ProseMirror and the DOM selection are always synchronized! From here, we
+could start to implement more editor commands. If you're so inclined, try to use
+the `prosemirror-commands` package to implement a case for when `inputType` is
+`insertParagraph`. Or you could try to implement a case for when `inputType` is
+`deleteContentBackward`. Happy editing!
