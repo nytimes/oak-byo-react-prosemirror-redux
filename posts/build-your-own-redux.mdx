@@ -203,7 +203,6 @@ const Reflux = {
 <html>
   <head>
     <title>Redux basic example</title>
-    <script src="https://unpkg.com/redux@latest/dist/redux.min.js"></script>
   </head>
   <body>
     <div>
@@ -410,3 +409,488 @@ const Reflux = {
 ```
 
 </CH.Code>
+
+## Diving Deeper
+
+This initial implementation works great (if you haven't, try running it in a
+real browser!), but it's missing some crucial features from the real Redux. In
+particular, our implementation lacks any support for middleware, which means we
+don't have any first-class support for side effects.
+
+Redux allows customization of the store via "enhancers". A store enhancer is a
+higher-order function that takes a store creator and returns a new, enhanced
+store creator.
+
+Middleware is a specific type of enhancer that allows consumers to wrap the
+`dispatch` method of the store in order to support, for example, logging or
+network requests. Redux exposes an `applyMiddleware` function that takes any
+number of middleware functions and returns a store enhancer function that can be
+passed to `createStore`.
+
+Let's start by extending our store to support store enhancers.
+
+```javascript focus=2:4
+function createStore(reducer, enhancer) {
+  if (enhancer) {
+    return enhancer(createStore)(reducer);
+  }
+  let state = reducer(undefined, { type: "@@INIT" });
+  const listeners = [];
+  return {
+    dispatch: (action) => {
+      state = reducer(state, action);
+      listeners.forEach((listener) => {
+        listener();
+      });
+    },
+    getState: () => state,
+    subscribe: (listener) => {
+      listeners.push(listener);
+    },
+  };
+}
+
+const Reflux = {
+  createStore,
+};
+```
+
+The Redux middleware API is a little tricky to reason about, so it's worth
+working our way up to it. Let's start with a simple version of
+`applyMiddleware`, which only takes one middleware function. We'll define our
+middleware function signature as `({ getState, dispatch }) => action => any`. It
+takes the `getState` and `dispatch` methods from the store, and returns a new
+dispatch method, which takes an action.
+
+The expectation is that users will write middleware functions that do some work
+before or after calling `dispatch`, like logging to the console.
+
+```javascript focus=1:12,15
+function applyMiddleware(middleware) {
+  return (createStore) => (reducer) => {
+    const store = createStore(reducer);
+    return {
+      ...store,
+      dispatch: middleware({
+        getState: store.getState,
+        dispatch: store.dispatch,
+      }),
+    };
+  };
+}
+
+const Reflux = {
+  applyMiddleware,
+  createStore,
+};
+```
+
+Let's build a middleware for our simple application, so that we can get a feel
+for this new API we've built. We'll start with a very simple logging middleware,
+that logs each action that is dispatched, and the resulting updated state.
+
+<CH.Code>
+
+```javascript index.js focus=1:11,30
+function logger({ getState, dispatch }) {
+  return (action) => {
+    console.log("will dispatch", action);
+
+    const returnValue = dispatch(action);
+
+    console.log("state after dispatch", getState());
+
+    return returnValue;
+  };
+}
+
+const initialState = {
+  value: 0,
+};
+
+function counterReducer(state = initialState, action) {
+  switch (action.type) {
+    case "counter/incremented":
+      return { ...state, value: state.value + 1 };
+    case "counter/decremented":
+      return { ...state, value: state.value - 1 };
+    default:
+      return state;
+  }
+}
+
+const store = Reflux.createStore(
+  counterReducer,
+  Reflux.applyMiddleware(logger)
+);
+
+const valueEl = document.getElementById("value");
+
+function render() {
+  const state = store.getState();
+  valueEl.innerHTML = state.value.toString();
+}
+
+render();
+store.subscribe(render);
+
+document.getElementById("increment").addEventListener("click", function () {
+  store.dispatch({ type: "counter/incremented" });
+});
+
+document.getElementById("decrement").addEventListener("click", function () {
+  store.dispatch({ type: "counter/decremented" });
+});
+```
+
+```javascript reflux.js
+function createStore(reducer, enhancer) {
+  if (enhancer) {
+    return enhancer(createStore)(reducer);
+  }
+  let state = reducer(undefined, { type: "@@INIT" });
+  const listeners = [];
+  return {
+    dispatch: (action) => {
+      state = reducer(state, action);
+      listeners.forEach((listener) => {
+        listener();
+      });
+    },
+    getState: () => state,
+    subscribe: (listener) => {
+      listeners.push(listener);
+    },
+  };
+}
+
+function applyMiddleware(middleware) {
+  return (createStore) => (reducer) => {
+    const store = createStore(reducer);
+    return {
+      ...store,
+      dispatch: middleware({
+        getState: store.getState,
+        dispatch: store.dispatch,
+      }),
+    };
+  };
+}
+
+const Reflux = {
+  applyMiddleware,
+  createStore,
+};
+```
+
+</CH.Code>
+
+Now let's add support for _multiple_ middleware functions. To make this easier,
+let's start out by building a utility function, `compose`, that can compose any
+set of single-argument functions.
+
+```javascript focus=1:7,24
+function compose(...functions) {
+  if (functions.length === 0) {
+    return (arg) => arg;
+  }
+
+  return functions.reduce((a, b) => (arg) => a(b(arg)));
+}
+
+function applyMiddleware(middleware) {
+  return (createStore) => (reducer) => {
+    const store = createStore(reducer);
+    return {
+      ...store,
+      dispatch: middleware({
+        getState: store.getState,
+        dispatch: store.dispatch,
+      }),
+    };
+  };
+}
+
+const Reflux = {
+  applyMiddleware,
+  compose,
+  createStore,
+};
+```
+
+In order to cooperate with this new function composition system, we need to
+tweak our middleware API a bit. Instead of directly returning a custom
+`dispatch` method, we'll add one more layer of indirection: middleware functions
+will return a function that takes the `dispatch` method of the _next_ middleware
+in the list, and _then_ return their own custom `dispatch`. This way, middleware
+functions can pass actions "down the line". The last middleware in the list will
+get the `store.dispatch` as `next`, which will call the actual reducers and
+update the state.
+
+<CH.Code>
+
+```javascript reflux.js focus=12:16
+function compose(...functions) {
+  if (functions.length === 0) {
+    return (arg) => arg;
+  }
+
+  return functions.reduce((a, b) => (arg) => a(b(arg)));
+}
+
+function applyMiddleware(...middlewares) {
+  return (createStore) => (reducer) => {
+    const store = createStore(reducer);
+    const dispatchChain = middlewares.map((middleware) =>
+      middleware({ getState: store.getState, dispatch: store.dispatch })
+    );
+    const composedMiddleware = compose(...dispatchChain);
+    const dispatch = composedMiddleware(store.dispatch);
+    return {
+      ...store,
+      dispatch,
+    };
+  };
+}
+
+const Reflux = {
+  applyMiddleware,
+  compose,
+  createStore,
+};
+```
+
+```javascript index.js focus=2,5
+function logger({ getState }) {
+  return (next) => (action) => {
+    console.log("will dispatch", action);
+
+    const returnValue = next(action);
+
+    console.log("state after dispatch", getState());
+
+    return returnValue;
+  };
+}
+
+const initialState = {
+  value: 0,
+};
+
+function counterReducer(state = initialState, action) {
+  switch (action.type) {
+    case "counter/incremented":
+      return { ...state, value: state.value + 1 };
+    case "counter/decremented":
+      return { ...state, value: state.value - 1 };
+    default:
+      return state;
+  }
+}
+
+const store = Reflux.createStore(
+  counterReducer,
+  Reflux.applyMiddleware(logger)
+);
+
+const valueEl = document.getElementById("value");
+
+function render() {
+  const state = store.getState();
+  valueEl.innerHTML = state.value.toString();
+}
+
+render();
+store.subscribe(render);
+
+document.getElementById("increment").addEventListener("click", function () {
+  store.dispatch({ type: "counter/incremented" });
+});
+
+document.getElementById("decrement").addEventListener("click", function () {
+  store.dispatch({ type: "counter/decremented" });
+});
+```
+
+</CH.Code>
+
+There's just one last tweak we need to make. The `dispatch` method that we pass
+in the initial arguments to our middleware functions (`{ getState, dispatch }`)
+is currently the real `dispatch` method from our store. This isn't quite right;
+we want middleware functions to be able to call the _composed_ `dispatch`
+method, so that they can start the chain "from the beginning", if they need to.
+
+```javascript focus=12:15,17
+function compose(...functions) {
+  if (functions.length === 0) {
+    return (arg) => arg;
+  }
+
+  return functions.reduce((a, b) => (arg) => a(b(arg)));
+}
+
+function applyMiddleware(...middlewares) {
+  return (createStore) => (reducer) => {
+    const store = createStore(reducer);
+    const middlewareApi = {
+      getState: store.getState,
+      dispatch: (action, ...args) => dispatch(action, ...args),
+    };
+    const dispatchChain = middlewares.map((middleware) =>
+      middleware(middlewareApi)
+    );
+    const composedMiddleware = compose(...dispatchChain);
+    const dispatch = composedMiddleware(store.dispatch);
+    return {
+      ...store,
+      dispatch,
+    };
+  };
+}
+
+const Reflux = {
+  applyMiddleware,
+  compose,
+  createStore,
+};
+```
+
+Now we can apply multiple middleware functions. We can even write our own
+side-effect middleware, like Redux Thunk!
+
+<CH.Code>
+
+```javascript index.js focus=1:8,39
+function sideEffects({ getState, dispatch }) {
+  return (next) => (action) => {
+    if (typeof action === "function") {
+      return action(dispatch, getState);
+    }
+    return next(action);
+  };
+}
+
+function logger({ getState }) {
+  return (next) => (action) => {
+    console.log("will dispatch", action);
+
+    const returnValue = next(action);
+
+    console.log("state after dispatch", getState());
+
+    return returnValue;
+  };
+}
+
+const initialState = {
+  value: 0,
+};
+
+function counterReducer(state = initialState, action) {
+  switch (action.type) {
+    case "counter/incremented":
+      return { ...state, value: state.value + 1 };
+    case "counter/decremented":
+      return { ...state, value: state.value - 1 };
+    default:
+      return state;
+  }
+}
+
+const store = Reflux.createStore(
+  counterReducer,
+  Reflux.applyMiddleware(sideEffects, logger)
+);
+
+const valueEl = document.getElementById("value");
+
+function render() {
+  const state = store.getState();
+  valueEl.innerHTML = state.value.toString();
+}
+
+render();
+store.subscribe(render);
+
+document.getElementById("increment").addEventListener("click", function () {
+  store.dispatch({ type: "counter/incremented" });
+});
+
+document.getElementById("decrement").addEventListener("click", function () {
+  store.dispatch({ type: "counter/decremented" });
+});
+```
+
+```javascript reflux.js
+function createStore(reducer, enhancer) {
+  if (enhancer) {
+    return enhancer(createStore)(reducer);
+  }
+  let state = reducer(undefined, { type: "@@INIT" });
+  const listeners = [];
+  return {
+    dispatch: (action) => {
+      state = reducer(state, action);
+      listeners.forEach((listener) => {
+        listener();
+      });
+    },
+    getState: () => state,
+    subscribe: (listener) => {
+      listeners.push(listener);
+    },
+  };
+}
+
+function compose(...functions) {
+  if (functions.length === 0) {
+    return (arg) => arg;
+  }
+
+  return functions.reduce((a, b) => (arg) => a(b(arg)));
+}
+
+function applyMiddleware(...middlewares) {
+  return (createStore) => (reducer) => {
+    const store = createStore(reducer);
+    const middlewareApi = {
+      getState: store.getState,
+      dispatch: (action, ...args) => dispatch(action, ...args),
+    };
+    const dispatchChain = middlewares.map((middleware) =>
+      middleware(middlewareApi)
+    );
+    const composedMiddleware = compose(...dispatchChain);
+    const dispatch = composedMiddleware(store.dispatch);
+    return {
+      ...store,
+      dispatch,
+    };
+  };
+}
+
+const Reflux = {
+  applyMiddleware,
+  compose,
+  createStore,
+};
+```
+
+</CH.Code>
+
+## Conclusion
+
+And that's... it! We've actually reproduced the vast majority of Redux
+functionality, and even wrote some useful middleware. There are only a few
+things missing to reach full feature parity:
+
+- Redux does a lot of argument type checking and logging that we simply skip
+- Redux supports optionally passing a `preloadedState` object, which is
+  especially useful when hydrating your initial state from a server, or
+  restoring a user session.
+- Redux also exports a `combineReducers` convenience function for composing
+  "state slice reducers" into a singled root reducer. Try to implement it
+  yourself!
+- The Redux Store object also exposes a `replaceReducer` method, which allows
+  you to "hot swap" your store reducer. This might be useful if you need to load
+  reducers dynamically, or for hot reloading in development.
