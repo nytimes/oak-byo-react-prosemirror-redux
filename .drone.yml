@@ -5,6 +5,12 @@ get:
   path: nytimes/teams/nyt-cms-devs/secret/gcp/GOOGLE_CREDENTIALS_DEV
   name: base64
 ---
+kind: secret
+name: test_secret
+get:
+  path: nytimes/teams/nyt-cms-devs/secret/gcp/GOOGLE_CREDENTIALS_DEV
+  name: x-auth-secrets-copy
+---
 kind: pipeline
 name: Build and deploy
 steps:
@@ -12,8 +18,12 @@ steps:
     pull: if-not-exists
     image: node:16
     commands:
+      - echo ${TEST_SECRET}
       - yarn install
       - yarn build
+    environment:
+      TEST_SECRET:
+        from_secret: test_secret
 
   - name: Deploy to GAE
     pull: if-not-exists
