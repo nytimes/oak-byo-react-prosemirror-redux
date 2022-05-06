@@ -3,7 +3,7 @@ kind: secret
 name: google_credentials_dev
 get:
   path: nytimes/teams/nyt-cms-devs/secret/gcp/GOOGLE_CREDENTIALS_DEV
-  name: value
+  name: base64
 ---
 kind: pipeline
 name: Build and deploy
