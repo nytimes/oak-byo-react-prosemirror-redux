@@ -2,7 +2,7 @@
 kind: secret
 name: google_credentials_dev
 get:
-  path: nytimes/teams/nyt-cms-devs-secret/gcp/GOOGLE_CREDENTIALS_DEV
+  path: nytimes/teams/nyt-cms-devs/secret/gcp/GOOGLE_CREDENTIALS_DEV
   name: value
 ---
 kind: pipeline
