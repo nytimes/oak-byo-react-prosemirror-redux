@@ -1,0 +1,34 @@
+---
+kind: secret
+name: google_credentials_dev
+get:
+  path: nytimes/teams/nyt-cms-devs-secret/gcp/GOOGLE_CREDENTIALS_DEV
+  name: value
+---
+kind: pipeline
+name: Build and deploy
+steps:
+  - name: Build
+    pull: if-not-exists
+    image: node:16
+    commands:
+      - yarn install
+      - yarn build
+
+  - name: Deploy to GAE
+    pull: if-not-exists
+    image: nytimes/drone-gae
+    settings:
+      action: deploy
+      max_versions: 1
+      project: nyt-cms-dev
+      version: ${DRONE_COMMIT}
+      addl_flags:
+        - --promote
+    environment:
+      GAE_CREDENTIALS:
+        from_secret: google_credentials_dev
+
+trigger:
+  event: push
+  branch: main
