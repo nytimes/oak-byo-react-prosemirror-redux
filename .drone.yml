@@ -1,16 +1,3 @@
----
-kind: secret
-name: google_credentials_dev
-get:
-  path: nytimes/teams/nyt-cms-devs/secret/gcp/GOOGLE_CREDENTIALS_DEV
-  name: base64
----
-kind: secret
-name: test_secret
-get:
-  path: nytimes/teams/nyt-cms-devs/secret/gcp/GOOGLE_CREDENTIALS_DEV
-  name: x-auth-secrets-copy
----
 kind: pipeline
 name: Build and deploy
 steps:
