@@ -3,26 +3,6 @@ runtime: python310
 service: oak-pm-react-week
 
 handlers:
-  - url: /favicon.ico
-    secure: always
-    static_files: out/favicon.ico
-    upload: out/favicon.ico
-
-  - url: /vercel.svg
-    secure: always
-    static_files: out/vercel.svg
-    upload: out/vercel.svg
-
-  - url: /_next
-    secure: always
-    static_dir: out/_next
-
-  - url: /build-your-own-redux
-    secure: always
-    static_files: out/build-your-own-redux.html
-    upload: out/build-your-own-redux.html
-
   - url: /.*
     secure: always
-    static_files: out/404.html
-    upload: out/404.html
+    static_dir: out/
