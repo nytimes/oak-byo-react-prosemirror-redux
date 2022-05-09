@@ -1,0 +1,186 @@
+# Review: React Basics
+
+We're going to review some of the basics of React, and how to work with it. This
+might feel rudimentary, but it's important that everyone's on the same page when
+we start diving deeper into how React actually works under the hood!
+
+To start, head to
+[https://glitch.com/edit/#!/oak-pm-react-week-react-comfort](https://glitch.com/edit/#!/oak-pm-react-week-react-comfort)
+and click Remix in the top right corner to fork your own website.
+
+A quick note on language: throughout this post, we'll use "HTML element" to
+refer to native browser elements, like `<p>` or `<div>`, and "React element" to
+refer to the values returned by calling `React.createElement`. A "React
+component" refers to a function that returns a valid React child (usually a
+React element), or a class that extends `React.Component`.
+
+## `React.createElement` and `ReactDOM.render`
+
+To run React in the browser, you need at least two libraries: React, and
+ReactDOM. React provides a suite of functions and classes for defining a tree of
+"React elements", and how that tree should be updated over time. ReactDOM is
+responsible for actually updating the browser DOM to keep it in sync with the
+React tree.
+
+We'll start by talking about `React`. In most React applications, we use JSX
+syntax to define our React element tree. Under the hood, tools like `babel` or
+`tsc` compile JSX to function calls. Specifically, something like:
+
+```jsx
+<p id="intro">This is the intro.</p>
+```
+
+Will be compiled to this:
+
+```javascript
+React.createElement("p", { id: "intro" }, "This is the intro");
+```
+
+`React.createElement` takes as arguments:
+
+- The element's type, which can be a string HTML tag name (e.g. `"p"` or
+  `"div"`), a function, or a class that extends `React.Component`
+- The "props" to pass to the element, such as `id` in the above example. This is
+  passed as a single object, mapping prop names to values.
+- Finally, any number of child elements. Child elements can be any of:
+  - `null`, `undefined`, or `false`. Elements with these values will not be
+    rendered.
+  - Any string (or other Javascript primitive value, which will be converted to
+    a string)
+  - Any React element (the result of calling `React.createElement`)
+
+Now let's talk about `ReactDOM`. The primary entrypoint to `ReactDOM` for most
+applications is `ReactDOM.render`, which takes two arguments:
+
+- A React element. This element will be mounted as a child of the container HTML
+  element
+- A container HTML element. The React tree will be mounted within this HTML
+  element.
+
+Let's start by implementing a simple "Hello, World" page with `ReactDOM.render`
+and `React.createElement`. In the inline `script` tag in your Glitch project,
+implement the HelloWorld function so that it returns a React element with the
+element type `"main"`. The `"main"` element should have two children:
+
+- An `"h1"` type React element, containing the string "Hello, World!", with an
+  `id` prop with the value `"heading1"`
+- A `"p"` type React element, containing the string "Brought to you by React"
+
+As an experiment, what happens if you call your `HelloWorld` function (we'll
+also refer to functions like this, that return React elements, as "components")
+and `console.log` the result?
+
+Now, let's mount our React tree! Add a call to `ReactDOM.render` to the end of
+your script, mounting an instance of your new `HelloWorld` component in the HTML
+element with the id "container".
+
+Click the Preview button in the bottom toolbar to see your new page!
+
+## Adding JSX
+
+We need to make two small changes to enable JSX in our script tags. First,
+uncomment the script tag on line 17 that imports `@babel/standalone` from unpkg.
+Then, add `type="text/babel"` to your inline script tag.
+
+Now, let's rewrite our page with JSX. This is going to start looking more like
+the React we know and love, but it's useful to keep in mind what our JSX is
+actually doing. Each JSX "tag" is actually a call to `React.createElement`,
+which means it's a **statement** that returns a React element.
+
+## Hooks
+
+React Hooks provide an interface for state management and side effects in your
+React code. React components (e.g. `HelloWorld`) can track their own state and
+execute their own side effects via hooks.
+
+### State
+
+Let's start by adding some very simple state to our app. We'll make a new
+component, `Counter`. `Counter` should render a `p` tag containing the text
+`Count: 0`, followed by two buttons, a plus button and a minus button. Now let's
+place `Counter` in our `HelloWorld` component, between the `h1` and `p`
+elements.
+
+<details>
+<summary>A few reminders about JSX</summary>
+
+- Babel, the transpilation library that converts JSX to `React.createElement`,
+  decides whether to treat the JSX element as an HTML tag name (e.g. `"p"`) or a
+  component (e.g. `Counter`) based on whether the first letter is capitalized.
+  This is why we always capitalize React component names, even when defining
+  them as functions.
+- When creating an element with no children, you can always write the tag in
+  "self-closing" style. This looks like `<Counter />` for our `Counter`
+  component.
+
+</details>
+
+Now we'll actually wire up our state. We'll do this by adding a function call to
+`React.useState()` in our `Counter` component. It's helpful to think of hooks as
+an escape hatch from your component definition and the render cycle;
+`React.useState()` is a way to make a little pocket to store a value in, and
+access it each time your component is rendered.
+
+The call to `React.useState()` actually returns an array with two elements: the
+current value in the pocket, and a function that takes a new value as an
+argument. When the function is called, it will update the value in the pocket,
+and then re-render your React component, so that it can return a new React
+element with the updated value. It's common to use array destructuring to access
+these return values:
+
+```jsx focus=2
+function Counter() {
+  const [count, setCount] = React.useState(0);
+  return <p>
+```
+
+Next, we want to actually use this `count` value in our rendered output. To do
+so, we'll use curly braces to embed our Javascript expression (`count`) in our
+JSX.
+
+As an experiment, log the return value of `Counter` to the console. How does
+Babel translate your embedded Javascript expression? What is the resulting
+`children` prop in the `p` element?
+
+Finally, let's hook up some state updates. We can do this by adding `onClick`
+props to our buttons. Unlike in HTML, where the `onclick` attribute takes a
+string that represents some Javascript code to execute, the `onClick` prop (and
+other event handlers) in React receives a function, which is called with the
+event as an argument. Again, we'll use JSX's curly brace syntax to embed a
+Javascript expression. Here's an example that logs the event to the console:
+
+```jsx
+<button
+  type="button"
+  onClick={(event) => {
+    console.log(event);
+  }}
+>
+  Click here
+</button>
+```
+
+Add an `onClick` prop to each button: the plus button should call `setCount`
+with a value one higher than the current `count`, and the minus button should
+call `setCount` with a value one lower than the current `count`. Now, you should
+be able to update the value on the page by clicking the plus or minus buttons.
+
+### Side effects and mutations
+
+React render functions (either function components, like our `Counter`, or the
+`render` method of a class component) have to be "pure functions". The notion of
+pure functions comes from functional programming, a style of programming that
+avoids side effects and mutations, and prioritizes thinking about programming as
+a series of functions, or transformations, applied to data. In this paradigm, a
+"pure" function is one with no side effects; it takes some data as an argument,
+and through some set of transformations, produces some new data. Crucially, this
+is _all_ a pure function can do; side effects, like logging or making network
+requests, are not allowed.
+
+Sometimes, though, we need to execute side effects in order for our application
+to work! The remainder of the hooks provided by React deal largely with
+supporting side effects and mutations.
+
+The React docs cover
+[The Effect hook](https://reactjs.org/docs/hooks-effect.html) in depth, and it's
+worth reading through!
