@@ -13,6 +13,20 @@ This application is very straightforward. It renders a single number and two
 buttons. One button increments the number by one, and the other decrements it by
 one.
 
+<details>
+  <summary>Running locally</summary>
+
+- Make a new directory (you can call it whatever you like, I called it
+  `build-your-own-redux`)
+- `cd` into it
+- Copy the contents of the files below (`index.js` and `index.html`) into your
+  new directory
+- Run `python3 -m http.server 9030` to run a web server
+- Access your tiny web application at `http://localhost:9030` in your web
+  browser!
+
+</details>
+
 <CH.Code>
 
 ```javascript index.js
@@ -79,7 +93,9 @@ Reducers are pure functions that take the current state and an action and
 produce the next state value. Our reducer considers two different action types,
 `"counter/incremented"` and `"counter/decremented"`.
 
-```javascript focus=1:13
+<CH.Code>
+
+```javascript index.js focus=1:13
 const initialState = {
   value: 0,
 };
@@ -105,11 +121,15 @@ function render() {
 }
 ```
 
+</CH.Code>
+
 In the Redux model, there is only one store. The store is a singleton, and it is
 responsible for keeping track of the current state, updating it with the reducer
 in response to action dispatches, and notifying subscribers.
 
-```javascript focus=12
+<CH.Code>
+
+```javascript index.js focus=12
 function counterReducer(state = initialState, action) {
   switch (action.type) {
     case "counter/incremented":
@@ -131,11 +151,15 @@ function render() {
 }
 ```
 
+</CH.Code>
+
 Next, we define a render function. This function takes our new state and updates
 the DOM to match it. We use `store.subscribe()` to register the render function
 to be called every time the store is updated.
 
-```javascript focus=3:11
+<CH.Code>
+
+```javascript index.js focus=3:11
 const store = Redux.createStore(counterReducer);
 
 const valueEl = document.getElementById("value");
@@ -153,12 +177,16 @@ document.getElementById("increment").addEventListener("click", function () {
 });
 ```
 
+</CH.Code>
+
 Finally, we attach some event listeners to our buttons. When each button is
 clicked, we dispatch the appropriate action to the Redux store, which triggers
 the next state reduction and a subsequent call to the render function, updating
 our view.
 
-```javascript focus=4:10
+<CH.Code>
+
+```javascript index.js focus=4:10
 render();
 store.subscribe(render);
 
@@ -171,6 +199,8 @@ document.getElementById("decrement").addEventListener("click", function () {
 });
 ```
 
+</CH.Code>
+
 ## Getting started
 
 Let's identify the API that we need to support in our new Redux implementation,
@@ -182,7 +212,7 @@ To start, we'll need to at least support `createStore`, `subscribe`, and
 <CH.Code>
 
 ```javascript reflux.js
-function createStore() {
+function createStore(reducer) {
   return {
     dispatch: () => {
       // TODO: implement this!
@@ -198,7 +228,7 @@ const Reflux = {
 };
 ```
 
-```html index.html focus=15
+```html index.html focus=14
 <!DOCTYPE html>
 <html>
   <head>
@@ -230,7 +260,9 @@ Notice that we dispatch our own action, `@@INIT`, when `createStore` is called.
 We don't expect any user-provided reducers to respond to this action; instead,
 we use it to get the initial state from our reducer.
 
-```javascript focus=2,4:6
+<CH.Code>
+
+```javascript reflux.js focus=2,4:6
 function createStore(reducer) {
   let state = reducer(undefined, { type: "@@INIT" });
   return {
@@ -248,11 +280,15 @@ const Reflux = {
 };
 ```
 
+</CH.Code>
+
 Now let's implement `subscribe`. As we said before, `subscribe` takes a function
 (called a `listener`) as an argument, and that function should be called each
 time the state is updated.
 
-```javascript focus=3,7:10
+<CH.Code>
+
+```javascript reflux.js focus=3,7:10
 function createStore(reducer) {
   let state = reducer(undefined, { type: "@@INIT" });
   const listeners = [];
@@ -271,8 +307,12 @@ const Reflux = {
 };
 ```
 
+</CH.Code>
+
 Now we need to ensure that our listeners are actually called after the state is
 updated.
+
+<CH.Code>
 
 ```javascript focus=7:9
 function createStore(reducer) {
@@ -296,11 +336,15 @@ const Reflux = {
 };
 ```
 
+</CH.Code>
+
 Finally, you might have noticed that our listener isn't passed any arguments.
 Instead, listeners are expected to call `store.getState()` to obtain the new
 state. Let's implement this last method.
 
-```javascript focus=11
+<CH.Code>
+
+```javascript reflux.js focus=11
 function createStore(reducer) {
   let state = reducer(undefined, { type: "@@INIT" });
   const listeners = [];
@@ -322,6 +366,8 @@ const Reflux = {
   createStore,
 };
 ```
+
+</CH.Code>
 
 That's it! Now lets go back to our application, and replace our call to
 `Redux.createStore()` with a call to `Reflux.createStore()`.
@@ -429,7 +475,9 @@ passed to `createStore`.
 
 Let's start by extending our store to support store enhancers.
 
-```javascript focus=2:4
+<CH.Code>
+
+```javascript reflux.js focus=1:4
 function createStore(reducer, enhancer) {
   if (enhancer) {
     return enhancer(createStore)(reducer);
@@ -455,6 +503,8 @@ const Reflux = {
 };
 ```
 
+</CH.Code>
+
 The Redux middleware API is a little tricky to reason about, so it's worth
 working our way up to it. Let's start with a simple version of
 `applyMiddleware`, which only takes one middleware function. We'll define our
@@ -465,7 +515,9 @@ dispatch method, which takes an action.
 The expectation is that users will write middleware functions that do some work
 before or after calling `dispatch`, like logging to the console.
 
-```javascript focus=1:12,15
+<CH.Code>
+
+```javascript reflux.js focus=1:12,15
 function applyMiddleware(middleware) {
   return (createStore) => (reducer) => {
     const store = createStore(reducer);
@@ -484,6 +536,8 @@ const Reflux = {
   createStore,
 };
 ```
+
+</CH.Code>
 
 Let's build a middleware for our simple application, so that we can get a feel
 for this new API we've built. We'll start with a very simple logging middleware,
@@ -589,7 +643,42 @@ Now let's add support for _multiple_ middleware functions. To make this easier,
 let's start out by building a utility function, `compose`, that can compose any
 set of single-argument functions.
 
-```javascript focus=1:7,24
+<details>
+  <summary>A note on function composition</summary>
+
+You might recognize "function composition" from a high school algebra class (or
+you might not, not all high schools are the same!). In mathematics, function
+composition is usually drawn as an infix operator, ∘. The operator is defined
+like this:
+
+For some pair of functions `f` and `g`, `g ∘ f` produces a new function (we'll
+call it `h`), such that `h(x) = g(f(x))`.
+
+Here's a more concrete example: let's say `f(x) = x + 1`, and `g(x) = x * 2`.
+Then if `h = g ∘ f`, `h(x) = (x + 1) * 2`.
+
+With our `compose` function below, we can define the same set of transformations
+in code
+
+```javascript
+function f(x) {
+  return x + 1;
+}
+
+function g(x) {
+  return x * 2;
+}
+
+const h = compose(g, f);
+
+h(2); // => (2 + 1) * 2 === 6
+```
+
+</details>
+
+<CH.Code>
+
+```javascript reflux.js focus=1:7,24
 function compose(...functions) {
   if (functions.length === 0) {
     return (arg) => arg;
@@ -618,6 +707,8 @@ const Reflux = {
 };
 ```
 
+</CH.Code>
+
 In order to cooperate with this new function composition system, we need to
 tweak our middleware API a bit. Instead of directly returning a custom
 `dispatch` method, we'll add one more layer of indirection: middleware functions
@@ -629,7 +720,7 @@ update the state.
 
 <CH.Code>
 
-```javascript reflux.js focus=12:16
+```javascript reflux.js focus=12:16,18
 function compose(...functions) {
   if (functions.length === 0) {
     return (arg) => arg;
@@ -720,7 +811,9 @@ is currently the real `dispatch` method from our store. This isn't quite right;
 we want middleware functions to be able to call the _composed_ `dispatch`
 method, so that they can start the chain "from the beginning", if they need to.
 
-```javascript focus=12:15,17
+<CH.Code>
+
+```javascript reflux.js focus=12:15,17
 function compose(...functions) {
   if (functions.length === 0) {
     return (arg) => arg;
@@ -754,6 +847,8 @@ const Reflux = {
   createStore,
 };
 ```
+
+</CH.Code>
 
 Now we can apply multiple middleware functions. We can even write our own
 side-effect middleware, like Redux Thunk!
