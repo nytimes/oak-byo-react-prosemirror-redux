@@ -4,9 +4,5 @@ service: oak-pm-react-week
 
 handlers:
   - url: /
-    static_files: out/react-basics.html
-    upload: out/react-basics.html
-
-  - url: /.*
     secure: always
     static_dir: out/
