@@ -1,0 +1,271 @@
+# Review: ProseMirror Basics
+
+Let's start our overview of ProseMirror by comparing it to the other
+technologies we've gone over so far. In many ways, ProseMirror is an
+"all-in-one" library which handles the roles of both Redux and React, but it's
+specifically crafted around one use case: rich text editing.
+
+## State management
+
+Like Redux, ProseMirror has a store singleton that's responsible for maintaining
+and updating an immutable state object, and provides an API for dispatching
+actions that describe state updates. In ProseMirror, the singleton is called the
+"editor view" (as the name implies, it also does a lot more than state
+management, which we'll get to later).
+
+Unlike Redux, which allows users to manage state with a completely arbitrary
+shape by defining custom reducers, ProseMirror has a specific state class called
+the "editor state". Similarly, ProseMirror has the notion of a "transaction",
+which is roughly analogous to an action in Redux. However, while in Redux,
+application code is responsible for defining and dispatching actions, the vast
+majority of transactions in ProseMirror are constructed by ProseMirror itself,
+in response to a user interacting with the browser!
+
+Just like `store.getState()`, `view.state` returns a snapshot of the current
+state object. `view.dispatch()` is similar to `store.dispatch()`; it takes a
+transaction and uses it to produce a new editor state. It's also possible to
+"subscribe" to changes to the editor view, but the interface is different from
+Redux: instead of a `subscribe()` method, ProseMirror relies on the notion of
+plugins to execute side effects and update the view when the state changes.
+
+### Customizing state management
+
+While ProseMirror doesn't let users fully customize the shape of the state it
+manages, its plugin architecture does support storing _additional_ state. In
+fact, we could reimplement the state for our Redux toy application entirely with
+ProseMirror:
+
+```javascript
+const counterPlugin = new Plugin({
+  state: {
+    init: () => 0,
+    apply(transaction, state) {
+      const counterPluginMeta = transaction.getMeta(this);
+      switch (counterPluginMeta?.type) {
+        case "counter/incremented":
+          return state + 1;
+        case "counter/decremented":
+          return state - 1;
+        default:
+          return state;
+      }
+    },
+  },
+});
+
+const view = new EditorView(document.getElementById("editor"), {
+  state: EditorState.create({ doc, plugins: [counterPlugin] }),
+});
+```
+
+We'll add the view later!
+
+ProseMirror also allows the user to _configure_ the primary editor state object,
+by specifying a "schema" for the document. The editor view will take the schema
+into consideration when applying transactions, ensuring that the resulting
+editor state has a valid document according to the schema.
+
+Lastly, ProseMirror supports customizing the editor view's `dispatch` function,
+just like middleware in Redux, by passing a `dispatchTransaction` prop when the
+editor view instance is created. We can, for example, implement a logging
+middleware just like we did in our Redux example:
+
+```javascript
+const view = new EditorView({
+  state,
+  dispatchTransaction: (transaction) => {
+    console.log("will dispatch", transaction);
+
+    const newState = view.state.apply(transaction);
+    view.updateState(newState);
+
+    console.log("state after dispatch", view.state);
+  },
+});
+```
+
+## View management
+
+Like React, ProseMirror maintains a tree of elements (in ProseMirror these are
+called "nodes"), and it performs some synchronization after each update cycle to
+ensure that the DOM matches the node tree. In part because ProseMirror manages
+both the state _and_ the view in an application, there's a tighter coupling
+between the two. The node tree is actually directly stored in state, as
+`view.state.doc`.
+
+In order to determine how to actually render a given node as an HTML element,
+ProseMirror first inspects on what it calls a "node spec". A node spec is not
+dissimilar from a React component; it specifies what props a node takes
+(ProseMirror calls these "attributes"), what type of children it allows
+(ProseMirror calls this "content"), and how it should be represented in the DOM
+(via `toDOM`).
+
+If you squint a little, `toDOM` even looks somewhat like JSX. Here's a
+comparison:
+
+```jsx
+function Paragraph(props) {
+  const { id, children } = props;
+  return <p id={id}>{children}</p>;
+}
+
+Paragraph.propTypes = {
+  id: PropTypes.string,
+};
+
+Paragraph.defaultProps = {
+  id: "",
+};
+```
+
+```javascript
+const paragraphSpec = {
+  content: "text*",
+  attrs: {
+    id: { default: "" },
+  },
+  toDOM: (node) => {
+    const { id } = node.attrs;
+    return ["p", { id }, 0];
+  },
+};
+```
+
+Note: ProseMirror uses the number zero (which it refers to as "hole") to
+indicate where to place a nodes children. This is roughly analogous to the
+`children` prop in React.
+
+Notably, there is no notion of effects or lifecycle for these node specs; by
+default, state is entirely managed by ProseMirror, and effects are entirely
+managed through plugins.
+
+ProseMirror also supports more complex views for nodes, which it calls "node
+views". Node views have similar flexibility to full fledged React components.
+They don't get to make use of ProseMirror's convenient `toDOM` shorthand;
+instead, they are able to take full control over managing their own DOM
+elements. This ends up looking like reimplementing some of the React internals
+that we worked on in our React section.
+
+The above paragraph node might be implemented like this as a node view:
+
+```javascript
+function paragraphNodeViewCreator(node) {
+  const dom = document.createElement("p");
+  if (node.attrs.id) {
+    dom.id = node.attrs.id;
+  }
+  return {
+    dom,
+    contentDom: dom,
+    update: (node) => {
+      if (node.type === "paragraph") {
+        dom.id = node.attrs.id;
+        return true;
+      }
+      return false;
+    },
+  };
+}
+```
+
+### Non-node views
+
+ProseMirror plugins also support managing arbitrary DOM. With this behavior, we
+can actually fully implement our counter from the Redux example:
+
+<CH.Code>
+
+```javascript index.js
+const { EditorState, Plugin } = require("prosemirror-state");
+const { EditorView } = require("prosemirror-view");
+const { schema } = require("prosemirror-schema-basic");
+
+const counterPlugin = new Plugin({
+  state: {
+    init: () => 0,
+    apply(transaction, state) {
+      const counterPluginMeta = transaction.getMeta(counterPlugin);
+      switch (counterPluginMeta?.type) {
+        case "counter/incremented":
+          return state + 1;
+        case "counter/decremented":
+          return state - 1;
+        default:
+          return state;
+      }
+    },
+  },
+  view: (view) => {
+    const countElement = document.getElementById("count");
+    // counterPlugin.getState() is like a plugin-specific state selector!
+    const count = counterPlugin.getState(view.state);
+    countElement.innerHTML = count.toString();
+
+    document.getElementById("increment").addEventListener("click", () => {
+      const transaction = view.state.tr;
+      transaction.setMeta(counterPlugin.key, { type: "counter/incremented" });
+      view.dispatch(transaction);
+    });
+
+    document.getElementById("decrement").addEventListener("click", () => {
+      const transaction = view.state.tr;
+      transaction.setMeta(counterPlugin, { type: "counter/decremented" });
+      view.dispatch(transaction);
+    });
+
+    return {
+      update: (view, previousState) => {
+        const count = counterPlugin.getState(view.state);
+        countElement.innerHTML = count.toString();
+      },
+    };
+  },
+});
+
+window.view = new EditorView(document.querySelector("#editor"), {
+  state: EditorState.create({
+    doc: DOMParser.fromSchema(schema).parse(document.querySelector("#content")),
+    plugins: [counterPlugin],
+  }),
+});
+```
+
+```html index.html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>ProseMirror basic example</title>
+    <meta charset="utf8" />
+    <link rel="stylesheet" href="https://prosemirror.net/css/editor.css" />
+    <script src="https://prosemirror.net/examples/prosemirror.js"></script>
+    <script src="/require-pm.js"></script>
+
+    <base href="http://prosemirror.net/" />
+  </head>
+  <body>
+    <div>
+      <p>
+        Clicked: <span id="count">0</span> times
+        <button type="button" id="increment">+</button>
+        <button type="button" id="decrement">-</button>
+      </p>
+    </div>
+    <div id="editor" style="margin-bottom: 23px"></div>
+    <script src="/index.js"></script>
+  </body>
+</html>
+```
+
+```javascript require-pm.js
+// Kludge to make requiring prosemirror core libraries possible. The
+// PM global is defined by http://prosemirror.net/examples/prosemirror.js,
+// which bundles all the core libraries.
+function require(name) {
+  let id = /^prosemirror-(.*)/.exec(name),
+    mod = id && PM[id[1].replace(/-/g, "_")];
+  if (!mod) throw new Error(`Library basic isn't loaded`);
+  return mod;
+}
+```
+
+</CH.Code>
