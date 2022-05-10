@@ -85,7 +85,7 @@ Then, add `type="text/babel"` to your inline script tag.
 Now, let's rewrite our page with JSX. This is going to start looking more like
 the React we know and love, but it's useful to keep in mind what our JSX is
 actually doing. Each JSX "tag" is actually a call to `React.createElement`,
-which means it's a **statement** that returns a React element.
+which means it's an **expression** that returns a React element.
 
 ## Hooks
 
@@ -105,10 +105,10 @@ elements.
 <summary>A few reminders about JSX</summary>
 
 - Babel, the transpilation library that converts JSX to `React.createElement`,
-  decides whether to treat the JSX element as an HTML tag name (e.g. `"p"`) or a
-  component (e.g. `Counter`) based on whether the first letter is capitalized.
-  This is why we always capitalize React component names, even when defining
-  them as functions.
+  decides whether to transpile the JSX element's name to a string (e.g. `"p"`)
+  or a Javascript variable (e.g. `Counter`) based on whether the first letter is
+  capitalized. This is why we always capitalize React component names, even when
+  defining them as functions.
 - When creating an element with no children, you can always write the tag in
   "self-closing" style. This looks like `<Counter />` for our `Counter`
   component.
