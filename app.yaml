@@ -3,10 +3,15 @@ runtime: python310
 service: oak-pm-react-week
 
 handlers:
-  - url: /
+  - url: /$
     secure: always
     static_files: out/index.html
+    upload: out/index.html
 
-  - url: /
-    secure: always
-    static_dir: out/
+  - url: /(.*)/$
+    static_files: out/\1/index.html
+    upload: out/.*/index.html
+
+  - url: /(.+)
+    static_files: out/\1
+    upload: out/(.*)
