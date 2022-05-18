@@ -5,6 +5,10 @@ technologies we've gone over so far. In many ways, ProseMirror is an
 "all-in-one" library which handles the roles of both Redux and React, but it's
 specifically crafted around one use case: rich text editing.
 
+To start, head to
+[https://glitch.com/edit/#!/oak-pm-react-week-prosemirror-basics](https://glitch.com/edit/#!/oak-pm-react-week-prosemirror-basics)
+and click Remix in the top right corner to fork your own website.
+
 ## State management
 
 Like Redux, ProseMirror has a store singleton that's responsible for maintaining
@@ -35,7 +39,13 @@ manages, its plugin architecture does support storing _additional_ state. In
 fact, we could reimplement the state for our Redux toy application entirely with
 ProseMirror:
 
-```javascript
+<CH.Code>
+
+```javascript index.js
+const { EditorState, Plugin } = require("prosemirror-state");
+const { EditorView } = require("prosemirror-view");
+const { schema } = require("prosemirror-schema-basic");
+
 const counterPlugin = new Plugin({
   state: {
     init: () => 0,
@@ -58,6 +68,8 @@ const view = new EditorView(document.getElementById("editor"), {
 });
 ```
 
+</CH.Code>
+
 We'll add the view later!
 
 ProseMirror also allows the user to _configure_ the primary editor state object,
@@ -70,7 +82,9 @@ just like middleware in Redux, by passing a `dispatchTransaction` prop when the
 editor view instance is created. We can, for example, implement a logging
 middleware just like we did in our Redux example:
 
-```javascript
+<CH.Code>
+
+```javascript index.js
 const view = new EditorView({
   state,
   dispatchTransaction: (transaction) => {
@@ -83,6 +97,8 @@ const view = new EditorView({
   },
 });
 ```
+
+</CH.Code>
 
 ## View management
 
@@ -224,7 +240,7 @@ const counterPlugin = new Plugin({
 
 window.view = new EditorView(document.querySelector("#editor"), {
   state: EditorState.create({
-    doc: DOMParser.fromSchema(schema).parse(document.querySelector("#content")),
+    schema,
     plugins: [counterPlugin],
   }),
 });
@@ -239,8 +255,6 @@ window.view = new EditorView(document.querySelector("#editor"), {
     <link rel="stylesheet" href="https://prosemirror.net/css/editor.css" />
     <script src="https://prosemirror.net/examples/prosemirror.js"></script>
     <script src="/require-pm.js"></script>
-
-    <base href="http://prosemirror.net/" />
   </head>
   <body>
     <div>
