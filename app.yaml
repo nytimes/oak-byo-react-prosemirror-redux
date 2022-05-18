@@ -5,4 +5,8 @@ service: oak-pm-react-week
 handlers:
   - url: /
     secure: always
+    static_files: out/index.html
+
+  - url: /
+    secure: always
     static_dir: out/
