@@ -5,13 +5,12 @@ import { MDXRemote } from "next-mdx-remote";
 import { remarkCodeHike } from "@code-hike/mdx";
 import { CH } from "@code-hike/mdx/components";
 import theme from "shiki/themes/dracula-soft.json";
-import styles from "../styles/Post.module.css";
 
 export default function Post({ source }) {
   return (
-    <div className={styles.main}>
+    <main>
       <MDXRemote {...source} components={{ CH }} />
-    </div>
+    </main>
   );
 }
 

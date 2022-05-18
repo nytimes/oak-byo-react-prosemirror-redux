@@ -1,15 +1,7 @@
-html,
-body {
-  padding: 0;
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
-    Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-code {
-  color: darkgreen;
+main {
+  max-width: 750px;
+  margin: auto;
+  padding: 40px;
+  font-family: Georgia, "Times New Roman", Times, serif;
+  line-height: 1.6em;
 }
