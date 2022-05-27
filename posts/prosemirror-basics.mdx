@@ -64,7 +64,7 @@ const counterPlugin = new Plugin({
 });
 
 const view = new EditorView(document.getElementById("editor"), {
-  state: EditorState.create({ doc, plugins: [counterPlugin] }),
+  state: EditorState.create({ schema, plugins: [counterPlugin] }),
 });
 ```
 
