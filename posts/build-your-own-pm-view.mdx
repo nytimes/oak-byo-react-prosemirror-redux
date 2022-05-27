@@ -1,0 +1,402 @@
+# Buld your own ProseMirror view
+
+Let's build a view layer for ProseMirror from scratch! We won't build support
+for everything that ProseMirror provides with its official view library, but it
+will provide a taste of what is involved.
+
+## Introduction
+
+We'll start with a simple ProseMirror sample that uses the standard schema. Our
+implementation won't support marks or decorations, and it won't support custom
+views, but it will demonstrate how to build the core components of a ProseMirror
+view library. Our implementation will also be made simple by not supporting all
+of the browsers that ProseMirror supports.
+
+Open up the [glitch] for this tutorial and click Remix in the top right corner
+to get started and follow along.
+
+[glitch]: https://glitch.com/edit/#!/oak-pm-react-week-build-your-own-pm-view
+
+<CH.Code>
+
+```javascript index.js
+const { EditorState } = require("prosemirror-state");
+const { schema } = require("prosemirror-schema-basic");
+
+const doc = schema.node("doc", null, [
+  schema.node("paragraph", null, [schema.text("Hello, ProseMirror!")]),
+  schema.node("paragraph", null, [schema.text("Time to edit!")]),
+]);
+
+window.view = new EditorView(document.querySelector("#editor"), {
+  state: EditorState.create({ doc }),
+});
+```
+
+```html index.html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>ProseMirror basic example</title>
+    <meta charset="utf8" />
+    <link rel="stylesheet" href="https://prosemirror.net/css/editor.css" />
+    <script src="https://prosemirror.net/examples/prosemirror.js"></script>
+    <script src="/require-pm.js"></script>
+    <style>
+      #editor {
+        white-space: break-spaces;
+      }
+
+      p {
+        line-height: 1.2rem;
+        min-height: 1.2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="editor" style="margin-bottom: 23px"></div>
+    <script src="/index.js"></script>
+  </body>
+</html>
+```
+
+</CH.Code>
+
+## Getting started
+
+This editor is really basic. It doesn't include ProseMirror's `keymap` plugin,
+so it's not even possible to add new paragraphs. That's okay. We're going to
+build our own `EditorView`. It won't support ProseMirror view plugins, but we'll
+use modern browser input events and implement sensible defaults.
+
+Comment out the line to require `EditorView`, create the file `editor-view.js`
+and add it to the `index.html` file. We'll build out this `EditorView` step by
+step until it works!
+
+<CH.Code>
+
+```javascript editor-view.js
+class EditorView {
+  constructor(dom, { state }) {
+    this.dom = dom;
+    this.state = state;
+
+    this.dom.contentEditable = true;
+  }
+}
+```
+
+```html index.html focus=22
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>ProseMirror basic example</title>
+    <meta charset="utf8" />
+    <link rel="stylesheet" href="https://prosemirror.net/css/editor.css" />
+    <script src="https://prosemirror.net/examples/prosemirror.js"></script>
+    <script src="/require-pm.js"></script>
+    <style>
+      #editor {
+        white-space: break-spaces;
+      }
+
+      p {
+        line-height: 1.2rem;
+        min-height: 1.2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="editor" style="margin-bottom: 23px"></div>
+    <script src="/editor-view.js"></script>
+    <script src="/index.js"></script>
+  </body>
+</html>
+```
+
+```javascript index.js focus=1,3
+/* global EditorView */
+const { EditorState } = require("prosemirror-state");
+// const { EditorView } = require("prosemirror-view");
+const { schema } = require("prosemirror-schema-basic");
+
+const doc = schema.node("doc", null, [
+  schema.node("paragraph", null, [schema.text("Hello, ProseMirror!")]),
+  schema.node("paragraph", null, [schema.text("Time to edit!")]),
+]);
+
+window.view = new EditorView(document.querySelector("#editor"), {
+  state: EditorState.create({ doc }),
+});
+```
+
+</CH.Code>
+
+Our `EditorView` just stores the state and sets the `contentEditable` attribute
+of the provided DOM element. Notice how this is enough for the browser to make
+the content editable. The browser even lets us add paragraph breaks! There is no
+standardized behavior for editable content, though. Where one browser might add
+a new paragraph tag, another might add a hard break. That's why ProseMirror will
+prevent you from adding a new paragraph! You have to add a `keymap` plugin that
+says _exactly_ what transactions should run when you press the "return" key.
+
+Modern browsers implement an [Input Events] standard. It defines a `beforeinput`
+event and a set of input types that express common editing activities. And the
+best part for us is that all of these events are cancelable. That means we can
+start from a blank slate, and then start to build out the interactions we want.
+
+[input events]: https://w3c.github.io/input-events/
+
+<CH.Code>
+
+```javascript editor-view.js focus=6:7,12:18
+class EditorView {
+  constructor(dom, { state }) {
+    this.dom = dom;
+    this.state = state;
+
+    this.onBeforeInput = this.onBeforeInput.bind(this);
+    this.dom.addEventListener("beforeinput", this.onBeforeInput);
+
+    this.dom.contentEditable = true;
+  }
+
+  destroy() {
+    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
+  }
+
+  onBeforeInput(event) {
+    event.preventDefault();
+  }
+}
+```
+
+</CH.Code>
+
+We've taken a really important step! By preventing the default actions of the
+browser, we'll make that the _EditorState_ the source of truth for what should
+be in the DOM. The browser is no longer in control. We are!
+
+<details>
+
+<summary>Remind you of something?</summary>
+
+React components create a virtual DOM, a description of what the DOM _should_
+contain. React reconciles any of the differences between successive renders by
+updating the real DOM to match. Your application state is the source of truth,
+not the DOM. In a similar same way, `EditorState` is a description of what the
+editor _should_ contain. The `EditorView` is responsible for updating the DOM.
+
+</details>
+
+The view will be responsible for updating the state in response to input events,
+but it also needs to be responsible for updating the DOM to reflect the state.
+Before we start to add interactions to our editor, let's take a detour and get
+it to render the state.
+
+## Rendering
+
+Let's make a function to render a ProseMirror node. Our function is going to
+return a DOM node representation of our ProseMirror node. For simplicity, we'll
+start with text nodes.
+
+<CH.Code>
+
+```javascript editor-view.js focus=1:6
+function renderNode(node) {
+  if (node.isText) {
+    return document.createTextNode(node.text);
+  }
+}
+
+class EditorView {
+  constructor(dom, { state }) {
+    this.dom = dom;
+    this.state = state;
+
+    this.onBeforeInput = this.onBeforeInput.bind(this);
+    this.dom.addEventListener("beforeinput", this.onBeforeInput);
+
+    this.dom.contentEditable = true;
+  }
+
+  destroy() {
+    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
+  }
+
+  onBeforeInput(event) {
+    event.preventDefault();
+  }
+}
+```
+
+</CH.Code>
+
+To add support for other kinds of nodes, we need to use the `NodeSpec` for the
+node to generate what ProseMirror calls a `DOMOutputSpec`. In real schemas, the
+`DOMOutputSpec` can be quite complicated. The DOM representation can be made up
+of a number of HTML elements, but we're going to keep things simple. For now,
+let's assume every `NodeSpec` returns a very simple structure from its `toDOM`
+function.
+
+We're not trying to practice recursion here, so we'll assume that the "hole",
+where ProseMirror renders the children of the node, is the content of the one
+and only DOM node. With this simplifying assumption, all we need to do is look
+at the first item of the array returned by `toDOM` to get the tag name.
+
+<CH.Code>
+
+```javascript editor-view.js focus=6:7
+function renderNode(node) {
+  if (node.isText) {
+    return document.createTextNode(node.text);
+  }
+
+  const [tagName] = node.type.spec.toDOM(node);
+  return document.createElement(tagName);
+}
+```
+
+</CH.Code>
+
+The `EditorView` is the view for the document, but we are going to need views
+for all of the nodes of the model now that we can render them. Let's get that
+structure in place.
+
+<CH.Code>
+
+```javascript editor-view.js focus=10:38,40[18:30],42,52
+function renderNode(node) {
+  if (node.isText) {
+    return document.createTextNode(node.text);
+  }
+
+  const [tagName] = node.type.spec.toDOM(node);
+  return document.createElement(tagName);
+}
+
+class View {
+  constructor(dom, parent, children) {
+    this.dom = dom;
+    this.parent = parent;
+    this.children = children;
+  }
+
+  destroy() {
+    this.parent = null;
+
+    for (const child of this.children) {
+      child.destroy();
+    }
+  }
+}
+
+class TextView extends View {
+  constructor(node, dom, parent) {
+    super(dom, parent, []);
+    this.node = node;
+  }
+}
+
+class NodeView extends View {
+  constructor(node, dom, parent) {
+    super(dom, parent, []);
+    this.node = node;
+  }
+}
+
+class EditorView extends NodeView {
+  constructor(dom, { state }) {
+    super(state.doc, dom, null);
+    this.state = state;
+
+    this.onBeforeInput = this.onBeforeInput.bind(this);
+    this.dom.addEventListener("beforeinput", this.onBeforeInput);
+
+    this.dom.contentEditable = true;
+  }
+
+  destroy() {
+    super.destroy();
+    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
+  }
+
+  onBeforeInput(event) {
+    event.preventDefault();
+  }
+}
+```
+
+</CH.Code>
+
+Note that the `EditorView` is just a special case of `NodeView`, where the node
+is the document node.
+
+<details>
+
+<summary>More flashbacks?</summary>
+
+We're building something not unlike React's fiber tree. We've got a tree that's
+linked downwards and upwards, with each view having references to its parent and
+its children.
+
+</details>
+
+<details>
+
+<summary>Taking out the trash</summary>
+
+When we destroy the editor view, we have to remove the DOM event listener. Why
+why do we set `parent` to `null` in the base class when we destroy a view? The
+JavaScript engine automatically deletes unused objects in a process known as
+garbage collection. We can help ensure that it deletes our views by removing
+references to them. As long as we break the `parent` reference, we've removed
+one side of the reference cycle between a parent and a child, which makes it
+easier for garbage collection to reason about whether the object is still in
+use. Consult the Wikipedia entry for [garbage collection] for more details.
+
+[garbage collection]:
+  https://en.wikipedia.org/wiki/Garbage_collection_(computer_science)
+
+</details>
+
+These views receive their initial DOM representation as an argument to their
+constructor, but they don't initially have any children. These views need to
+render their children. The editor, which starts out empty, will render its
+children, and they will return their children, and so on until we render the
+whole document!
+
+<CH.Code>
+
+```javascript editor-view.js focus=5,8:24
+class NodeView extends View {
+  constructor(node, dom, parent) {
+    super(dom, parent, []);
+    this.node = node;
+    this.updateChildren();
+  }
+
+  updateChildren() {
+    this.node.forEach((child, offset, index) => {
+      const childNodeView = this.children[index];
+      if (childNodeView) {
+        return;
+      }
+
+      const childDOM = renderNode(child);
+      this.dom.appendChild(childDOM);
+
+      if (child.isText) {
+        this.children[index] = new TextView(child, dom, this);
+      } else {
+        this.children[index] = new NodeView(child, dom, this);
+      }
+    });
+  }
+}
+```
+
+</CH.Code>
+
+If everything is working correctly, we should now see our paragraphs and our
+text in the document!

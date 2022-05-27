@@ -68,7 +68,16 @@ export default function Index() {
             Glitch
           </a>
         </li>
-        <li>Build your own ProseMirror View - In progress!</li>
+        <li>
+          Build your own ProseMirror View -{" "}
+          <a href="post/build-your-own-pm-view/">Course</a> :{" "}
+          <a
+            href="https://glitch.com/edit/#!/oak-pm-react-week-build-your-own-pm-view"
+            rel="noopener noreferrer"
+          >
+            Glitch
+          </a>
+        </li>
       </ol>
     </main>
   );
