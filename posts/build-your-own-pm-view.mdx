@@ -378,8 +378,8 @@ class NodeView extends View {
 
   updateChildren() {
     this.node.forEach((child, offset, index) => {
-      const childNodeView = this.children[index];
-      if (childNodeView) {
+      const childView = this.children[index];
+      if (childView) {
         return;
       }
 
