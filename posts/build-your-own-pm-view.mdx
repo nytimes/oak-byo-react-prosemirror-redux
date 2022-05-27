@@ -400,3 +400,160 @@ class NodeView extends View {
 
 If everything is working correctly, we should now see our paragraphs and our
 text in the document!
+
+## Updating the view
+
+Now that we can construct an initial empty view and render all the children, we
+need a way to update it when it changes. We'll leave this unimplemented in the
+base class, but implement it for `TextView` and `NodeView`. The method will take
+a new node, update the DOM to match, and return `true` if it is possible to do
+so. If it's not possible to update the view, the method will return `false`.
+
+We'll also need to make sure that we account for updating in `updateChildren`.
+When its possible to update a child, we'll do so. Otherwise, we'll destroy it
+and recreate it. We'll also need to remove any extra children.
+
+<details>
+
+<summary>Optimization possibilities</summary>
+
+It may not be efficient to destroy and recreate children all the time when some
+updates might be possible to perform in place. It's not possible to update the
+text nodes, but if we implemented node attributes we could set the attributes of
+the existing DOM node to match our new ProseMirror node. You may also note that
+adding a child anywhere but at the end of a node will destroy and recreate all
+the children after it. The real implementation tries to keep any children that
+did not change, even when adding and removing children. We're not going to try
+to handle that here, but note that this is not dissimilar from what React needs
+to do and how you can use keys to tell React about the identities of individual
+children.
+
+</details>
+
+<CH.Code>
+
+```javascript editor-view.js focus=7:9,19:27,33:38,42:46,55:58
+class TextView extends View {
+  constructor(node, dom, parent) {
+    super(dom, parent, []);
+    this.node = node;
+  }
+
+  update() {
+    return false;
+  }
+}
+
+class NodeView extends View {
+  constructor(node, dom, parent) {
+    super(dom, parent, []);
+    this.node = node;
+    this.updateChildren();
+  }
+
+  update(node) {
+    if (!this.node.sameMarkup(node)) {
+      return false;
+    }
+
+    this.node = node;
+    this.updateChildren();
+    return true;
+  }
+
+  updateChildren() {
+    this.node.forEach((child, offset, index) => {
+      const childView = this.children[index];
+      if (childView) {
+        const updated = childView.update(child);
+        if (updated) {
+          return;
+        }
+
+        childView.destroy();
+      }
+
+      const childDOM = renderNode(child);
+      if (childView) {
+        this.dom.replaceChild(childDOM, childView.dom);
+      } else {
+        this.dom.appendChild(childDOM);
+      }
+
+      if (child.isText) {
+        this.children[index] = new TextView(child, dom, this);
+      } else {
+        this.children[index] = new NodeView(child, dom, this);
+      }
+    });
+
+    while (this.children.length > this.node.childCount) {
+      this.children.pop().destroy();
+      this.dom.removeChild(this.dom.lastChild);
+    }
+  }
+}
+```
+
+</CH.Code>
+
+## Editing
+
+Wow! That was a lot, but we're here. We can construct an editor view and it can
+render an editor state. Finally, we can get back to handling events, and making
+those events update our state!
+
+Let's add methods to our `EditorView` to dispatch a transaction and set state.
+We can also handle our first input event to insert text.
+
+<CH.Code>
+
+``` javascript editor-view.js focus=17:25,30:36
+class EditorView extends NodeView {
+  constructor(dom, { state }) {
+    super(state.doc, dom, null);
+    this.state = state;
+
+    this.onBeforeInput = this.onBeforeInput.bind(this);
+    this.dom.addEventListener("beforeinput", this.onBeforeInput);
+
+    this.dom.contentEditable = true;
+  }
+
+  destroy() {
+    super.destroy();
+    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
+  }
+
+  dispatch(tr) {
+    const newState = this.state.apply(tr);
+    this.setState(newState);
+  }
+
+  setState(newState) {
+    this.state = newState;
+    this.update(this.state.doc);
+  }
+
+  onBeforeInput(event) {
+    event.preventDefault();
+
+    switch (event.inputType) {
+      case "insertText": {
+        const { tr } = this.state;
+        tr.insertText(event.data);
+        this.dispatch(tr);
+      }
+    }
+  }
+}
+```
+
+</CH.Code>
+
+What's going on!? If you've gotten this far, you should be able to type in the
+editor again. But no matter where you click and type, the letters appear at the
+top of the editor. We're not handling selection changes! ProseMirror thinks the
+selection begins at the start of the document, and moves it forward each time we
+insert text, but we're not telling it when the user sets a new selection. We'll
+have to tackle that next.
