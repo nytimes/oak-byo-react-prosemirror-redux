@@ -840,3 +840,196 @@ happen where we expect it to. We can tell ProseMirror where the selection should
 be, but when we render the editor it changes the DOM and that can cause the DOM
 selection to change. We'll need a way to transform a ProseMirror selection into
 a DOM selection and make sure to do that after we update the editor view.
+
+This code will have one interesting subtlety. When we refer to a text position
+there are sometimes two equivalent DOM boundary points for the same ProseMirror
+position because text nodes have no border. When there are two adjacent text
+nodes, the boundary point after the last character of the first node and before
+the first character of the second node are the same ProseMirror position. We'll
+prefer not to make selections that include zero-length slices of text nodes, so
+we'll make sure that we only choose a boundary point at the very start or very
+end of a text node when it provides a good result. For example, we must use the
+very start or very end of a text node when that node is the very first or very
+last child, respectively. Otherwise, we'll prefer that selections start on the
+trailing edge of such a boundary and end on the leading edge.
+
+<CH.Code>
+
+``` javascript editor-view.js focus=19:41,78:80,117:133
+class View {
+  constructor(dom, parent, children) {
+    this.dom = dom;
+    this.parent = parent;
+    this.children = children;
+    this.dom.__view = this;
+  }
+
+  destroy() {
+    this.parent = null;
+
+    for (const child of this.children) {
+      child.destroy();
+    }
+
+    this.dom.__view = null;
+  }
+
+  pointFromPos(pos, preferBefore) {
+    let index = 0;
+    let offset = 0;
+
+    while (index < this.children.length) {
+      const child = this.children[index];
+      const isLastChild = index === this.children.length - 1;
+
+      const { border, size } = child;
+      const start = offset + border;
+      const end = offset + size - border;
+      const after = end + border;
+
+      if (pos < after || (pos === after && preferBefore) || isLastChild) {
+        return child.pointFromPos(pos - start, preferBefore);
+      }
+
+      index = index + 1;
+      offset = offset + size;
+    }
+
+    return { node: this.dom, offset: pos };
+  }
+
+  get border() {
+    return 0;
+  }
+
+  get pos() {
+    const { parent } = this;
+
+    if (!parent) {
+      return -1;
+    }
+
+    const siblings = parent.children;
+    const index = siblings.indexOf(this);
+    const precedingSiblings = siblings.slice(0, index);
+    return precedingSiblings.reduce(
+      (pos, sibling) => pos + sibling.size,
+      parent.pos + parent.border
+    );
+  }
+
+  get size() {
+    return this.children.reduce((size, child) => size + child.size, 0);
+  }
+}
+
+class TextView extends View {
+  constructor(node, dom, parent) {
+    super(dom, parent, []);
+    this.node = node;
+  }
+
+  update(node) {
+    return false;
+  }
+
+  pointFromPos(pos, preferBefore) {
+    return { node: this.dom, offset: pos };
+  }
+
+  get size() {
+    return this.node.nodeSize;
+  }
+}
+
+class EditorView extends NodeView {
+  constructor(dom, { state }) {
+    super(state.doc, dom, null);
+    this.state = state;
+
+    this.onBeforeInput = this.onBeforeInput.bind(this);
+    this.dom.addEventListener("beforeinput", this.onBeforeInput);
+
+    this.onSelectionChange = this.onSelectionChange.bind(this);
+    document.addEventListener("selectionchange", this.onSelectionChange);
+
+    this.dom.contentEditable = true;
+  }
+
+  destroy() {
+    super.destroy();
+    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
+    document.removeEventListener("selectionchange", this.onSelectionChange);
+  }
+
+  dispatch(tr) {
+    const newState = this.state.apply(tr);
+    this.setState(newState);
+  }
+
+  setState(newState) {
+    this.state = newState;
+    this.update(this.state.doc);
+  }
+
+  update(node) {
+    super.update(node);
+
+    const { anchor, head } = this.state.selection;
+    const backward = head > anchor;
+
+    const anchorPoint = this.pointFromPos(anchor, backward);
+    const focusPoint = this.pointFromPos(head, !backward);
+
+    const domSelection = document.getSelection();
+    domSelection.setBaseAndExtent(
+      anchorPoint.node,
+      anchorPoint.offset,
+      focusPoint.node,
+      focusPoint.offset
+    );
+  }
+
+  onBeforeInput(event) {
+    event.preventDefault();
+
+    switch (event.inputType) {
+      case "insertText": {
+        const { tr } = this.state;
+        tr.insertText(event.data);
+        this.dispatch(tr);
+      }
+    }
+  }
+
+  onSelectionChange(event) {
+    const { doc, tr } = this.state;
+
+    const domSelection = document.getSelection();
+
+    const { anchorNode, anchorOffset } = domSelection;
+    const anchorView = anchorNode.__view;
+    const anchor = anchorView.pos + anchorView.border + anchorOffset;
+    const $anchor = doc.resolve(anchor);
+
+    const { focusNode, focusOffset } = domSelection;
+    const headView = focusNode.__view;
+    const head = headView.pos + headView.border + focusOffset;
+    const $head = doc.resolve(head);
+
+    const selection = TextSelection.between($anchor, $head);
+    if (!this.state.selection.eq(selection)) {
+      tr.setSelection(selection);
+      this.dispatch(tr);
+    }
+  }
+}
+```
+
+</CH.Code>
+
+Now the ProseMirror and the DOM selection are always synchronized! From here, we
+could start to implement more editor commands. If you're so inclined, try to use
+the `prosemirror-commands` package to implement a case for when `inputType` is
+`insertParagraph`. Or you could try to implement a case for when `inputType` is
+`deleteContentBackward`. Happy editing!
