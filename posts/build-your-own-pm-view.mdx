@@ -202,7 +202,7 @@ structure in place.
 
 <CH.Code>
 
-```javascript editor-view.js focus=10:38,40[18:34],42,48:50
+```javascript editor-view.js focus=10:37,39[18:34],41,47:49
 function renderNode(node) {
   if (node.isText) {
     return document.createTextNode(node.text);
@@ -213,32 +213,31 @@ function renderNode(node) {
 }
 
 class View {
-  constructor(dom, parent, children) {
+  constructor(node, dom, parent) {
+    this.node = node;
     this.dom = dom;
     this.parent = parent;
-    this.children = children;
   }
 
   destroy() {
     this.parent = null;
-
-    for (const child of this.children) {
-      child.destroy();
-    }
   }
 }
 
-class TextView extends View {
-  constructor(node, dom, parent) {
-    super(dom, parent, []);
-    this.node = node;
-  }
-}
+class TextView extends View {}
 
 class NodeView extends View {
   constructor(node, dom, parent) {
-    super(dom, parent, []);
-    this.node = node;
+    super(node, dom, parent);
+    this.children = [];
+  }
+
+  destroy() {
+    super.destroy();
+
+    for (const child of children) {
+      child.destroy();
+    }
   }
 }
 
@@ -300,8 +299,8 @@ whole document!
 ```javascript editor-view.js focus=5,8:24
 class NodeView extends View {
   constructor(node, dom, parent) {
-    super(dom, parent, []);
-    this.node = node;
+    super(node, dom, parent);
+    this.children = [];
     this.updateChildren();
   }
 
@@ -361,13 +360,8 @@ children.
 
 <CH.Code>
 
-```javascript editor-view.js focus=7:9,19:27,33:38,42:46,55:58
+```javascript editor-view.js focus=2:4,14:22,28:33,37:41,50:53
 class TextView extends View {
-  constructor(node, dom, parent) {
-    super(dom, parent, []);
-    this.node = node;
-  }
-
   update() {
     return false;
   }
@@ -375,8 +369,8 @@ class TextView extends View {
 
 class NodeView extends View {
   constructor(node, dom, parent) {
-    super(dom, parent, []);
-    this.node = node;
+    super(node, dom, parent);
+    this.children = [];
     this.updateChildren();
   }
 
@@ -576,20 +570,16 @@ and its border.
 
 <CH.Code>
 
-```javascript editor-view.js focus=16:38,50:53,105:111
+```javascript editor-view.js focus=12:34
 class View {
-  constructor(dom, parent, children) {
+  constructor(node, dom, parent) {
+    this.node = node;
     this.dom = dom;
     this.parent = parent;
-    this.children = children;
   }
 
   destroy() {
     this.parent = null;
-
-    for (const child of this.children) {
-      child.destroy();
-    }
   }
 
   get border() {
@@ -613,25 +603,19 @@ class View {
   }
 
   get size() {
-    return this.children.reduce((size, child) => size + child.size, 0);
-  }
-}
-
-class TextView extends View {
-  constructor(node, dom, parent) {
-    super(dom, parent, []);
-    this.node = node;
-  }
-
-  update() {
-    return false;
-  }
-
-  get size() {
     return this.node.nodeSize;
   }
 }
+```
 
+</CH.Code>
+
+For non-leaf nodes, the border will be 1, indicating that we must increment the
+position by 1 when entering or leaving one of these nodes.
+
+<CH.Code>
+
+```javascript editor-view.js focus=8:10
 class NodeView extends View {
   constructor(node, dom, parent) {
     super(dom, parent, []);
@@ -639,55 +623,14 @@ class NodeView extends View {
     this.updateChildren();
   }
 
-  update(node) {
-    if (!this.node.sameMarkup(node)) {
-      return false;
-    }
-
-    this.node = node;
-    this.updateChildren();
-    return true;
-  }
-
-  updateChildren() {
-    this.node.forEach((child, offset, index) => {
-      const childView = this.children[index];
-      if (childView) {
-        const updated = childView.update(child);
-        if (updated) {
-          return;
-        }
-
-        childView.destroy();
-      }
-
-      const childDOM = renderNode(child);
-      if (childView) {
-        this.dom.replaceChild(childDOM, childView.dom);
-      } else {
-        this.dom.appendChild(childDOM);
-      }
-
-      if (child.isText) {
-        this.children[index] = new TextView(child, childDOM, this);
-      } else {
-        this.children[index] = new NodeView(child, childDOM, this);
-      }
-    });
-
-    while (this.children.length > this.node.childCount) {
-      this.children.pop().destroy();
-      this.dom.removeChild(this.dom.lastChild);
-    }
-  }
-
   get border() {
     return this.node.isLeaf ? 0 : 1;
   }
 
-  get size() {
-    return this.node.nodeSize;
-  }
+  update(node) {
+    if (!this.node.sameMarkup(node)) {
+      return false;
+    }
 }
 ```
 
@@ -698,21 +641,17 @@ that by stashing references to the ProseMirror views _on the nodes themselves_.
 
 <CH.Code>
 
-```javascript editor-view.js focus=6,16
+```javascript editor-view.js focus=6,12
 class View {
-  constructor(dom, parent, children) {
+  constructor(node, dom, parent) {
+    this.node = node;
     this.dom = dom;
     this.parent = parent;
-    this.children = children;
     this.dom.__view = this;
   }
 
   destroy() {
     this.parent = null;
-
-    for (const child of this.children) {
-      child.destroy();
-    }
 
     this.dom.__view = null;
   }
@@ -738,7 +677,7 @@ class View {
   }
 
   get size() {
-    return this.children.reduce((size, child) => size + child.size, 0);
+    return this.node.nodeSize;
   }
 }
 ```
@@ -845,21 +784,17 @@ trailing edge of such a boundary and end on the leading edge.
 
 <CH.Code>
 
-```javascript editor-view.js focus=19:41,78:80,117:133
+```javascript editor-view.js focus=15:37
 class View {
-  constructor(dom, parent, children) {
+  constructor(node, dom, parent) {
+    this.node = node;
     this.dom = dom;
     this.parent = parent;
-    this.children = children;
     this.dom.__view = this;
   }
 
   destroy() {
     this.parent = null;
-
-    for (const child of this.children) {
-      child.destroy();
-    }
 
     this.dom.__view = null;
   }
@@ -891,34 +826,16 @@ class View {
   get border() {
     return 0;
   }
+```
 
-  get pos() {
-    const { parent } = this;
+</CH.Code>
 
-    if (!parent) {
-      return -1;
-    }
+TextViews are much simpler, because they don't have any children.
 
-    const siblings = parent.children;
-    const index = siblings.indexOf(this);
-    const precedingSiblings = siblings.slice(0, index);
-    return precedingSiblings.reduce(
-      (pos, sibling) => pos + sibling.size,
-      parent.pos + parent.border
-    );
-  }
+<CH.Code>
 
-  get size() {
-    return this.children.reduce((size, child) => size + child.size, 0);
-  }
-}
-
+```javascript editor-view.js focus=6:8
 class TextView extends View {
-  constructor(node, dom, parent) {
-    super(dom, parent, []);
-    this.node = node;
-  }
-
   update(node) {
     return false;
   }
@@ -926,12 +843,17 @@ class TextView extends View {
   pointFromPos(pos, preferBefore) {
     return { node: this.dom, offset: pos };
   }
-
-  get size() {
-    return this.node.nodeSize;
-  }
 }
+```
 
+</CH.Code>
+
+And now we can update our EditorView's `update` method to keep the DOM selection
+in sync with the state.
+
+<CH.Code>
+
+```javascript editor-view.js focus=31:47
 class EditorView extends NodeView {
   constructor(dom, { state }) {
     super(state.doc, dom, null);
@@ -982,37 +904,6 @@ class EditorView extends NodeView {
 
   onBeforeInput(event) {
     event.preventDefault();
-
-    switch (event.inputType) {
-      case "insertText": {
-        const { tr } = this.state;
-        tr.insertText(event.data);
-        this.dispatch(tr);
-      }
-    }
-  }
-
-  onSelectionChange(event) {
-    const { doc, tr } = this.state;
-
-    const domSelection = document.getSelection();
-
-    const { anchorNode, anchorOffset } = domSelection;
-    const anchorView = anchorNode.__view;
-    const anchor = anchorView.pos + anchorView.border + anchorOffset;
-    const $anchor = doc.resolve(anchor);
-
-    const { focusNode, focusOffset } = domSelection;
-    const headView = focusNode.__view;
-    const head = headView.pos + headView.border + focusOffset;
-    const $head = doc.resolve(head);
-
-    const selection = TextSelection.between($anchor, $head);
-    if (!this.state.selection.eq(selection)) {
-      tr.setSelection(selection);
-      this.dispatch(tr);
-    }
-  }
 }
 ```
 
