@@ -135,71 +135,18 @@ window.view = new EditorView(document.querySelector("#editor"), {
 
 Our `EditorView` just stores the state and sets the `contentEditable` attribute
 of the provided DOM element. Notice how this is enough for the browser to make
-the content editable. The browser even lets us add paragraph breaks! There is no
-standardized behavior for editable content, though. Where one browser might add
-a new paragraph tag, another might add a hard break. That's why ProseMirror will
-prevent you from adding a new paragraph! You have to add a `keymap` plugin that
-says _exactly_ what transactions should run when you press the "return" key.
-
-Modern browsers implement an [Input Events] standard. It defines a `beforeinput`
-event and a set of input types that express common editing activities. And the
-best part for us is that all of these events are cancelable. That means we can
-start from a blank slate, and then start to build out the interactions we want.
-
-[input events]: https://w3c.github.io/input-events/
-
-<CH.Code>
-
-```javascript editor-view.js focus=6:7,12:18
-class EditorView {
-  constructor(dom, { state }) {
-    this.dom = dom;
-    this.state = state;
-
-    this.onBeforeInput = this.onBeforeInput.bind(this);
-    this.dom.addEventListener("beforeinput", this.onBeforeInput);
-
-    this.dom.contentEditable = true;
-  }
-
-  destroy() {
-    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
-  }
-
-  onBeforeInput(event) {
-    event.preventDefault();
-  }
-}
-```
-
-</CH.Code>
-
-We've taken a really important step! By preventing the default actions of the
-browser, we'll make that the _EditorState_ the source of truth for what should
-be in the DOM. The browser is no longer in control. We are!
-
-<details>
-
-<summary>Remind you of something?</summary>
-
-React components create a virtual DOM, a description of what the DOM _should_
-contain. React reconciles any of the differences between successive renders by
-updating the real DOM to match. Your application state is the source of truth,
-not the DOM. In a similar same way, `EditorState` is a description of what the
-editor _should_ contain. The `EditorView` is responsible for updating the DOM.
-
-</details>
-
-The view will be responsible for updating the state in response to input events,
-but it also needs to be responsible for updating the DOM to reflect the state.
-Before we start to add interactions to our editor, let's take a detour and get
-it to render the state.
+the content editable. The browser even lets us add paragraph breaks! But at the
+moment, there is no relationship between the state and the DOM. Changes to one
+won't affect the other. We'll build out this relationship one direction at a
+time, starting with updating the DOM to match the state, and then eventually
+updating the state in response to user interactions.
 
 ## Rendering
 
-Let's make a function to render a ProseMirror node. Our function is going to
-return a DOM node representation of our ProseMirror node. For simplicity, we'll
-start with text nodes.
+To start, let's make a function to render one of the basic units of ProseMirror
+state: a ProseMirror node. Our function is going to return a DOM node
+representation of our ProseMirror node. For simplicity, we'll start with text
+nodes.
 
 <CH.Code>
 
@@ -215,18 +162,7 @@ class EditorView {
     this.dom = dom;
     this.state = state;
 
-    this.onBeforeInput = this.onBeforeInput.bind(this);
-    this.dom.addEventListener("beforeinput", this.onBeforeInput);
-
     this.dom.contentEditable = true;
-  }
-
-  destroy() {
-    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
-  }
-
-  onBeforeInput(event) {
-    event.preventDefault();
   }
 }
 ```
@@ -266,7 +202,7 @@ structure in place.
 
 <CH.Code>
 
-```javascript editor-view.js focus=10:38,40[18:30],42,52
+```javascript editor-view.js focus=10:38,40[18:34],42,48:50
 function renderNode(node) {
   if (node.isText) {
     return document.createTextNode(node.text);
@@ -311,19 +247,11 @@ class EditorView extends NodeView {
     super(state.doc, dom, null);
     this.state = state;
 
-    this.onBeforeInput = this.onBeforeInput.bind(this);
-    this.dom.addEventListener("beforeinput", this.onBeforeInput);
-
     this.dom.contentEditable = true;
   }
 
   destroy() {
     super.destroy();
-    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
-  }
-
-  onBeforeInput(event) {
-    event.preventDefault();
   }
 }
 ```
@@ -335,7 +263,7 @@ is the document node.
 
 <details>
 
-<summary>More flashbacks?</summary>
+<summary>Feel familiar?</summary>
 
 We're building something not unlike React's fiber tree. We've got a tree that's
 linked downwards and upwards, with each view having references to its parent and
@@ -501,8 +429,70 @@ class NodeView extends View {
 ## Editing
 
 Wow! That was a lot, but we're here. We can construct an editor view and it can
-render an editor state. Finally, we can get back to handling events, and making
-those events update our state!
+render an editor state.
+
+Now we can start working in the opposite direction: updating our state in
+response to user input. Right now, our content is editable; the browser does
+that for us, with the `contenteditable` attribute. There is no standardized
+behavior for editable content, though. Where one browser might add a new
+paragraph tag in response to a user pressing enter, another might add a hard
+break. That's why ProseMirror will prevent you from adding a new paragraph by
+default! You have to add a `keymap` plugin that says _exactly_ what transactions
+should run when you press the "return" key.
+
+To implement our more fine-grained control over our content, we'll rely on the
+[Input Events] standard, which modern browsers implement. It defines a
+`beforeinput` event and a set of input types that express common editing
+activities. And the best part for us is that all of these events are cancelable.
+That means we can start from a blank slate, and then start to build out the
+interactions we want.
+
+[input events]: https://w3c.github.io/input-events/
+
+<CH.Code>
+
+```javascript editor-view.js focus=6:7,14,17:19
+class EditorView extends NodeView {
+  constructor(dom, { state }) {
+    super(state.doc, dom, null);
+    this.state = state;
+
+    this.onBeforeInput = this.onBeforeInput.bind(this);
+    this.dom.addEventListener("beforeinput", this.onBeforeInput);
+
+    this.dom.contentEditable = true;
+  }
+
+  destroy() {
+    super.destroy();
+    this.dom.removeEventListener("beforeinput", this.onBeforeInput);
+  }
+
+  onBeforeInput(event) {
+    event.preventDefault();
+  }
+}
+```
+
+</CH.Code>
+
+We've taken a really important step! By preventing the default actions of the
+browser, we'll make that the _EditorState_ the source of truth for what should
+be in the DOM. The browser is no longer in control. We are!
+
+<details>
+
+<summary>Remind you of something?</summary>
+
+React components create a virtual DOM, a description of what the DOM _should_
+contain. React reconciles any of the differences between successive renders by
+updating the real DOM to match. Your application state is the source of truth,
+not the DOM. In a similar same way, `EditorState` is a description of what the
+editor _should_ contain. The `EditorView` is responsible for updating the DOM.
+
+</details>
+
+Now we can begin handling events, and making those events update our state!
 
 Let's add methods to our `EditorView` to dispatch a transaction and set state.
 We can also handle our first input event to insert text.
