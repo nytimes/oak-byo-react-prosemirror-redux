@@ -64,7 +64,7 @@ const counterPlugin = new Plugin({
 });
 
 const view = new EditorView(document.getElementById("editor"), {
-  state: EditorState.create({ doc, plugins: [counterPlugin] }),
+  state: EditorState.create({ schema, plugins: [counterPlugin] }),
 });
 ```
 
@@ -225,7 +225,7 @@ const counterPlugin = new Plugin({
 
     document.getElementById("decrement").addEventListener("click", () => {
       const transaction = view.state.tr;
-      transaction.setMeta(counterPlugin, { type: "counter/decremented" });
+      transaction.setMeta(counterPlugin.key, { type: "counter/decremented" });
       view.dispatch(transaction);
     });
 
