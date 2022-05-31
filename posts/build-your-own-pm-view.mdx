@@ -316,9 +316,9 @@ class NodeView extends View {
       this.dom.appendChild(childDOM);
 
       if (child.isText) {
-        this.children[index] = new TextView(child, dom, this);
+        this.children[index] = new TextView(child, childDOM, this);
       } else {
-        this.children[index] = new NodeView(child, dom, this);
+        this.children[index] = new NodeView(child, childDOM, this);
       }
     });
   }
@@ -845,7 +845,7 @@ trailing edge of such a boundary and end on the leading edge.
 
 <CH.Code>
 
-``` javascript editor-view.js focus=19:41,78:80,117:133
+```javascript editor-view.js focus=19:41,78:80,117:133
 class View {
   constructor(dom, parent, children) {
     this.dom = dom;
