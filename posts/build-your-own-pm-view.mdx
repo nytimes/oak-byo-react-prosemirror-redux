@@ -410,9 +410,9 @@ class NodeView extends View {
       }
 
       if (child.isText) {
-        this.children[index] = new TextView(child, dom, this);
+        this.children[index] = new TextView(child, childDOM, this);
       } else {
-        this.children[index] = new NodeView(child, dom, this);
+        this.children[index] = new NodeView(child, childDOM, this);
       }
     });
 
@@ -669,9 +669,9 @@ class NodeView extends View {
       }
 
       if (child.isText) {
-        this.children[index] = new TextView(child, dom, this);
+        this.children[index] = new TextView(child, childDOM, this);
       } else {
-        this.children[index] = new NodeView(child, dom, this);
+        this.children[index] = new NodeView(child, childDOM, this);
       }
     });
 
