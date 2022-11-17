@@ -1,4 +1,5 @@
 import Head from "next/head";
+import Link from "next/link";
 
 export default function Index() {
   return (
@@ -25,7 +26,7 @@ export default function Index() {
         <ol>
           <li>
             Build our own Redux -{" "}
-            <a href="post/build-your-own-redux/">Course</a> :{" "}
+            <Link href="/post/build-your-own-redux/">Course</Link> :{" "}
             <a
               href="https://glitch.com/edit/#!/oak-pm-react-week-build-your-own-redux"
               rel="noopener noreferrer"
@@ -39,7 +40,7 @@ export default function Index() {
         </p>
         <ol>
           <li>
-            React Basics - <a href="post/react-basics/">Course</a> :{" "}
+            React Basics - <Link href="/post/react-basics/">Course</Link> :{" "}
             <a
               href="https://glitch.com/edit/#!/oak-pm-react-week-react-basics"
               rel="noopener noreferrer"
@@ -70,7 +71,7 @@ export default function Index() {
         </p>
         <ol>
           <li>
-            ProseMirror Basics - <a href="post/prosemirror-basics/">Course</a> :{" "}
+            ProseMirror Basics - <Link href="/post/prosemirror-basics/">Course</Link> :{" "}
             <a
               href="https://glitch.com/edit/#!/oak-pm-react-week-prosemirror-basics"
               rel="noopener noreferrer"
@@ -80,7 +81,7 @@ export default function Index() {
           </li>
           <li>
             Build your own ProseMirror View -{" "}
-            <a href="post/build-your-own-pm-view/">Course</a> :{" "}
+            <Link href="/post/build-your-own-pm-view/">Course</Link> :{" "}
             <a
               href="https://glitch.com/edit/#!/oak-pm-react-week-build-your-own-pm-view"
               rel="noopener noreferrer"
