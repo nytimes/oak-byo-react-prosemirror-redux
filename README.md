@@ -6,7 +6,7 @@ understanding of how the three tools that the Oak collaborative rich text editor
 relies on, React, ProseMirror, and Redux, actually work.
 
 The content is deployed with GitHub Pages, and can be viewed at
-[https://improved-sniffle-37f081ea.pages.github.io/](https://improved-sniffle-37f081ea.pages.github.io/).
+[https://nytimes.github.io/oak-byo-react-prosemirror-redux/](https://nytimes.github.io/oak-byo-react-prosemirror-redux/).
 
 If you want to learn more about why we built this, and the kinds of problems it
 helped us solve, check out our NYT Open blog post [link TK].
