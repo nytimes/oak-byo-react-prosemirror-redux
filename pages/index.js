@@ -25,7 +25,7 @@ export default function Index() {
         </p>
         <ol>
           <li>
-            Build our own Redux -{" "}
+            Build your own Redux -{" "}
             <Link href="/post/build-your-own-redux/">Course</Link> :{" "}
             <a
               href="https://glitch.com/edit/#!/oak-pm-react-week-build-your-own-redux"
